@@ -1,10 +1,10 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan; C1 fastest-to-build language; C6 and §3 passive capture: `proxy.py` unchanged, attach to already-running agents)
+Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan; C1 fastest-to-build language; C6 and §3 passive capture: `proxy.py` unchanged, attach to already-running agents; §4.5 Codex support)
 
 ## 1. Goal
 
-While `proxy.py` is running, you can start the dashboard and open a page in the browser that updates live and shows the conversation between the agent (Claude Code) and the model, in a form that is easy to read.
+While `proxy.py` is running, you can start the dashboard and open a page in the browser that updates live and shows the conversation between the agent and the model, for **both Claude Code and Codex**, in a form that is easy to read.
 
 **`proxy.py` is not changed, and nothing has to be restarted.** The dashboard is started separately, *after* `proxy.py` and the agents are already running, and it captures their conversations from that moment on (C6, §3).
 
@@ -20,7 +20,7 @@ Statistics (tokens, cost, timing, tool usage) are useful, but they come second. 
 ### Non-goals (v1)
 
 - Changing, blocking or replaying traffic. The proxy stays an observer.
-- Full parsing of non-Anthropic APIs (for example `--upstream …/codex`). Those exchanges are recorded and shown as raw request and response (§4.4).
+- Full parsing of APIs other than the Anthropic Messages API (Claude Code) and the OpenAI Responses API (Codex). Other traffic is recorded and shown as raw request and response (§4.4).
 - Multiple users, authentication, or remote access.
 
 ## 2. Constraints
@@ -30,7 +30,7 @@ Statistics (tokens, cost, timing, tool usage) are useful, but they come second. 
 | C1 | **Use the language that is fastest to build with.** For this project that is Python with the standard library only: `proxy.py` and the existing code are already Python, and it needs no compile step, no package install and no new toolchain. The frontend is one HTML file with inline JS/CSS, with no build step and no CDN. A different language is allowed only if it is clearly faster to build with for a given part, and that choice is recorded in §9. | Build speed comes first: every step in §8 should be quick to write, run and test. Nothing to install, works offline. |
 | C2 | **Forwarding behaves exactly as it does now.** The dashboard is never in the forwarding path: it only observes copies of the traffic. If the dashboard crashes, stops or falls behind, the agent and `proxy.py` are not affected. | The dashboard must never break or slow down the agent. |
 | C3 | Everything binds to `127.0.0.1` only. | Traffic contains prompts, file contents, tokens. |
-| C4 | Credentials are redacted *before* they are stored (`authorization`, `x-api-key`, `cookie`, and any header matching `*token*`/`*secret*`). | Nothing on disk or in the browser holds a usable credential. |
+| C4 | Credentials are redacted *before* they are stored (`authorization`, `x-api-key`, `cookie`, `chatgpt-account-id`, and any header matching `*token*`/`*secret*`/`*account*`). | Nothing on disk or in the browser holds a usable credential. |
 | C5 | Recorded content is untrusted. It is never inserted as HTML: use `textContent`, or a markdown renderer that escapes everything and allows only safe tags. | Tool results contain arbitrary file and web content. |
 | C6 | **`proxy.py` is not changed** (not a line, not a flag), and the agents and `proxy.py` are not restarted or reconfigured. The dashboard must attach to a `proxy.py` that is already running and to agents that are already talking to it. | Long agent sessions are already in progress and must not be interrupted to be observed. |
 
@@ -49,9 +49,9 @@ Statistics (tokens, cost, timing, tool usage) are useful, but they come second. 
 ```
 
 - **Separate program, started any time.** `dashboard.py` runs as its own process. It does not import, wrap or replace `proxy.py`, and it can be started and stopped while `proxy.py` and the agents keep running.
-- **Capture (how it sees traffic without touching `proxy.py`).** Between the agent and `proxy.py` the traffic is plain HTTP on `127.0.0.1:8041`. The dashboard listens passively on the loopback interface (a Linux `AF_PACKET` raw socket from the standard library, filtered to TCP port 8041), reassembles each TCP connection, and parses the HTTP request and the streamed response from it. It only reads copies of packets, so it cannot delay or change them (C2). This needs `CAP_NET_RAW` (for example `sudo python3 dashboard.py`, or `setcap` on a dedicated interpreter); without it the dashboard exits with a clear message saying so.
-- **Joining agents that are already running.** Connections that were already open when capture started are skipped until their next request (the start of a reply cannot be recovered). That costs nothing: every Messages API request carries the **whole conversation so far**, so the first request captured from an agent already shows its full history, its system prompt and its tools. Exchanges that started before capture are counted in the header ("2 in-flight exchanges missed").
-- **Port and upstream.** `--proxy-port` (default 8041) names the port `proxy.py` listens on. The capture never needs to see the HTTPS side, so nothing is decrypted.
+- **Capture (how it sees traffic without touching `proxy.py`).** Between the agent and `proxy.py` the traffic is plain HTTP on `127.0.0.1:8041`. The dashboard listens passively on the loopback interface (a Linux `AF_PACKET` raw socket from the standard library, filtered to the `proxy.py` port or ports), reassembles each TCP connection, and parses the HTTP request and the streamed response from it. It only reads copies of packets, so it cannot delay or change them (C2). This needs `CAP_NET_RAW` (for example `sudo python3 dashboard.py`, or `setcap` on a dedicated interpreter); without it the dashboard exits with a clear message saying so.
+- **Joining agents that are already running.** Connections that were already open when capture started are skipped until their next request (the start of a reply cannot be recovered). That costs nothing: every request from Claude Code and from Codex carries the **whole conversation so far**, so the first request captured from an agent already shows its full history, its system prompt and its tools. Exchanges that started before capture are counted in the header ("2 in-flight exchanges missed").
+- **Ports and agents.** `--proxy-port` (default 8041) names the port `proxy.py` listens on. It can be given more than once, because Claude Code and Codex usually go through separate `proxy.py` instances (for example `python3 proxy.py` on 8041 for Claude Code and `python3 proxy.py --port 8043 --upstream https://chatgpt.com/backend-api/codex` for Codex). One dashboard shows all of them together. The capture never needs to see the HTTPS side, so nothing is decrypted.
 - **Recorder.** For each exchange it records the request (method, path, redacted headers, body), and then the response: status, headers, raw bytes, and timing marks (request seen, first response byte, last byte; there is no "upstream connected" mark, because that happens inside `proxy.py`). It parses the Anthropic SSE stream *incrementally* so the dashboard can show the reply while it is still arriving.
 - **Store.** An in-memory list of exchanges plus a content-addressed blob store (§3.1). It is thread-safe.
 - **Persistence.** Off by default (D3). `--log traffic.jsonl` appends one line per finished exchange, with file mode `0600`. `--load traffic.jsonl` opens a recorded session in the dashboard without capturing anything (and without needing `CAP_NET_RAW`).
@@ -88,7 +88,8 @@ Every request repeats the system prompt, every tool definition, and all earlier 
   "terminal": "a1b2c3",              // short terminal ID, §4.3.1
   "agent": "subagent 2",             // main | subagent N | side call, §4.3.1
   "method": "POST", "path": "/v1/messages",
-  "kind": "messages",                // messages | count_tokens | other
+  "agent_app": "claude-code",        // claude-code | codex | unknown, §4.5
+  "kind": "messages",                // messages | responses | count_tokens | other
   "t": { "start": "...", "connected_ms": 80, "ttfb_ms": 1450, "total_ms": 9200 },
   "status": 200,
   "request": {
@@ -117,7 +118,7 @@ Every request repeats the system prompt, every tool definition, and all earlier 
 
 ### 4.3 Threads
 
-Claude Code sends several separate conversations through the same `proxy.py`: the main agent loop, subagents, and small side calls (titles, summaries, token counts). Mixing them in one feed would make it unreadable, so each exchange is given a **thread**:
+Claude Code and Codex each send several separate conversations through `proxy.py`: the main agent loop, subagents, and small side calls (titles, summaries, token counts). Mixing them in one feed would make it unreadable, so each exchange is given a **thread**:
 
 1. An exchange continues a thread when its `messages` start with the previous exchange's messages in that thread, with the same system prompt.
 2. Otherwise it starts a new thread.
@@ -129,16 +130,41 @@ Threads never span terminals: two exchanges with different terminal IDs (§4.3.1
 
 ### 4.3.1 Terminal and agent attribution
 
-Several Claude Code terminals can share one proxy, and each terminal can run subagents. Every thread, and so every conversation view, must say **which terminal** it came from and **which agent** sent it.
+Several Claude Code and Codex terminals can be watched at once, and each terminal can run subagents. Every thread, and so every conversation view, must say **which terminal** it came from and **which agent** sent it.
 
-- **Terminal ID.** Taken from the client's session identifier: the `X-Claude-Code-Session-Id` header if present, otherwise the session part of `metadata.user_id`. It is shown shortened to its first 6 characters (`a1b2c3`) for readability, with the full ID on hover and in the detail. If two active terminals share the same 6 characters, both are lengthened until they differ. A request with no session identifier gets the terminal `?` and is still shown.
+- **Terminal ID.** Taken from the client's session identifier. Claude Code: the `X-Claude-Code-Session-Id` header if present, otherwise the session part of `metadata.user_id`. Codex: the `session_id` header if present, otherwise `prompt_cache_key` in the body. The terminal chip also shows which app it is (`CC` or `CX`), so `T1 CC a1b2c3` and `T2 CX 9f8e7d` are never confused. It is shown shortened to its first 6 characters (`a1b2c3`) for readability, with the full ID on hover and in the detail. If two active terminals share the same 6 characters, both are lengthened until they differ. A request with no session identifier gets the terminal `?` and is still shown.
 - **Terminal label.** Each terminal also gets a stable color and a short name (`T1`, `T2`, … in order of first appearance) that can be renamed in the UI, like thread labels.
 - **Agent.** The agent that sent the exchange: *main*, *subagent N*, or *side call* (the thread label from §4.3). For a subagent, the thread is also linked to the tool call in the parent thread that launched it (an `Agent`/`Task` `tool_use` whose prompt matches the subagent's first user message). The subagent then shows its type and description from that call, e.g. `subagent 2 · Explore · "find auth code"`, plus a link "launched from #31 (main)". If no launching call is found, it shows as `subagent N · parent unknown`.
 - Both are stored on every exchange (`terminal`, `agent`, §4.1), so they survive `--log` / `--load`.
 
-### 4.4 Non-Anthropic traffic
+### 4.4 Other traffic
 
-If the path or body doesn't look like the Messages API, the exchange gets `kind: "other"`. It appears in the timeline and opens as pretty-printed JSON or text. Nothing more is parsed.
+If the path or body looks like neither the Anthropic Messages API nor the OpenAI Responses API, the exchange gets `kind: "other"`. It appears in the timeline and opens as pretty-printed JSON or text. Nothing more is parsed.
+
+### 4.5 Codex (OpenAI Responses API)
+
+Codex is a first-class agent, not "other" traffic. Its exchanges are parsed into the same internal model as Claude Code's, so every view, thread rule, diff, filter and statistic in this spec works for both. Only the parser differs.
+
+- **Detection.** `POST …/responses` with a JSON body that has `input` (and usually `instructions`), or the `originator: codex_*` header, is Codex (`agent_app: "codex"`, `kind: "responses"`). `POST /v1/messages` is Claude Code. Detection is by request, so one `proxy.py` port may carry either.
+- **Request mapping.**
+
+  | Responses API (Codex) | Common model (as for Claude Code) |
+  |---|---|
+  | `instructions` | system prompt (one block) |
+  | `input[]` items of type `message`, role `user` / `developer` | user messages (harness detection, D2, decides **You** vs **Harness**) |
+  | `input[]` items of type `message`, role `assistant`, `output_text` | model text |
+  | `reasoning` items (summary text; `encrypted_content` is never shown, only its size) | thinking |
+  | `function_call` / `custom_tool_call` / `local_shell_call` (with `call_id`) | tool call |
+  | `function_call_output` / `custom_tool_call_output` / `local_shell_call_output` | tool result, paired by `call_id` (§5.4) |
+  | `tools[]` (`function` with `parameters`, plus built-in types such as `local_shell`, `web_search`) | tool definitions (built-in types are listed by type with no schema) |
+  | `model`, `reasoning`, `store`, `include`, `parallel_tool_calls`, `prompt_cache_key`, … | request parameters |
+
+  Codex sends the whole conversation in `input` on each request, so `new_from`, threads and "history rewritten" work as in §4.3.
+- **Reply parsing.** The streamed events (`response.created`, `response.output_item.added` / `.done`, `response.output_text.delta`, `response.function_call_arguments.delta`, `response.reasoning_summary_text.delta`, `response.completed`, `response.failed`, `error`, …) rebuild the reply incrementally, like §4.2. Unknown event types are kept and shown raw, never dropped.
+- **Usage and cost.** `input_tokens`, `input_tokens_details.cached_tokens` (shown as cache read), `output_tokens`, `output_tokens_details.reasoning_tokens`. `prices.json` holds OpenAI models as well; Codex on a ChatGPT subscription still shows the estimate, labelled as such.
+- **Harness patterns.** The built-in list also covers Codex's injected context (for example `<environment_context>`, `<user_instructions>` and `AGENTS.md` contents sent as user or developer messages), overridable with `harness_patterns.json` like the rest.
+- **Agents.** Codex threads are labelled *main* or *side call* by the rules in §4.3. If Codex runs sub-agents, they are labelled and linked to their launching call the same way as Claude Code subagents (§4.3.1); otherwise no subagent is invented.
+- **Anything not understood** (an unknown body shape, a non-streaming variant, a WebSocket upgrade) is still recorded and shown raw with a "not parsed" badge, as in §6.
 
 ## 5. UI
 
@@ -232,11 +258,11 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 - **Per request:** input tokens split into uncached, cache write and cache read; output tokens; time to first byte; total time; estimated cost.
 - **Session:** totals; a cost-over-time line; cache hit rate.
 - **Tool usage:** a table of tool name, calls, errors, mean and max time between the call and its result, and result size. Clicking a row filters the timeline to that tool.
-- **Cost:** estimated from a price table per model family. Prices go in an editable `prices.json`, never hard-coded, and the cost is always labelled "estimate". Cache writes and reads are priced separately. A model missing from the table shows as "cost unknown", never as $0.
+- **Cost:** estimated from a price table per model family. Prices for both Anthropic and OpenAI models go in an editable `prices.json`, never hard-coded, and the cost is always labelled "estimate". Cache writes and reads are priced separately. A model missing from the table shows as "cost unknown", never as $0.
 
 ### 5.7 Filtering and search
 
-- Filter chips: terminal, agent/thread, kind (user prompt / tool call / errors only / side calls hidden), tool name (multi-select), model, status.
+- Filter chips: agent app (Claude Code / Codex), terminal, agent/thread, kind (user prompt / tool call / errors only / side calls hidden), tool name (multi-select), model, status.
 - Full-text search across message text, tool inputs and results. Matches are highlighted, and `n`/`N` jump between them.
 - Filters live in the URL hash, so a view can be bookmarked or reloaded.
 - **Errors only** is one click (`e`). The header's error count is a link to it.
@@ -277,6 +303,7 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 7. No credential appears in the store, the log, the API responses or the page.
 8. `--load traffic.jsonl` replays a saved session in the same UI.
 9. With two terminals running at once, each running a subagent, every timeline row and every conversation view shows the correct short terminal ID and the correct agent, and each subagent links to the call in its parent that launched it.
+10. With Claude Code and Codex **both already running**, each through its own `proxy.py`, one dashboard shows both. Codex exchanges get the same views as Claude Code ones: You vs Harness, tool calls paired with their results, system prompt and tools, what's new, threads, terminal ID and stats.
 
 ## 8. Milestones
 
@@ -288,7 +315,8 @@ The initial build starts with a **very basic version that works end to end**, th
 3. **Parsed detail:** message kinds, the conversation view, tool call/result pairing (§5.2, §5.4; criteria 2–4).
 4. **Threads + "what's new" + diffs** (§4.3, §5.5).
 5. **Terminal and agent attribution** (§4.3.1; criterion 9).
-6. **Stats, filters, search, keyboard, polish** (§5.6–§5.9; criterion 5), then robustness (§6).
+6. **Codex support** (§4.5; criterion 10): the Responses API parser feeding the same common model. Once this step is done, every later step is checked against both Claude Code and Codex traffic.
+7. **Stats, filters, search, keyboard, polish** (§5.6–§5.9; criterion 5), then robustness (§6).
 
 Order rule: when a later requirement turns out to be needed earlier, add the smallest version of it at that point rather than building it in full ahead of time.
 
@@ -303,3 +331,4 @@ Where there was a choice, the safest option was taken.
 | D3 | JSONL log on by default? | **Off by default.** It is written only with `--log PATH`, using file mode `0600`, with credentials already redacted (C4). On startup the terminal prints a warning that the log contains prompts and file contents. | Nothing sensitive is written to disk unless you ask for it. |
 | D4 | "Export thread as Markdown"? | **Not in v1.** Copy buttons on single messages (§5.4) are enough. | Avoids an easy way to move whole sessions (code, secrets in tool output) out of the local tool. It can come back later with redaction built in. |
 | D5 | How does the dashboard see traffic without changing `proxy.py` or restarting agents? | **Passive loopback capture** of port 8041 (§3). A relay is optional and never required. | It is the only option that reaches agents already pointed at `proxy.py`, and as an observer of packet copies it cannot break or slow forwarding. The cost is needing `CAP_NET_RAW`, which is asked for explicitly. |
+| D6 | Separate Codex views, or one common model? | **One common internal model** with one parser per API (§4.5). | Every readability feature is built once and works for both agents, and a Codex exchange can never be shown with fewer safety checks (C4, C5) than a Claude Code one. |
