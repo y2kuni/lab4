@@ -1,6 +1,6 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan)
+Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan; C1 fastest-to-build language)
 
 ## 1. Goal
 
@@ -25,7 +25,7 @@ Statistics (tokens, cost, timing, tool usage) are useful, but they come second. 
 
 | # | Constraint | Why |
 |---|---|---|
-| C1 | Python standard library only. The frontend is one HTML file with inline JS/CSS, with no build step and no CDN. | Same as the lab: nothing to install, works offline. |
+| C1 | **Use the language that is fastest to build with.** For this project that is Python with the standard library only: `proxy.py` and the existing code are already Python, and it needs no compile step, no package install and no new toolchain. The frontend is one HTML file with inline JS/CSS, with no build step and no CDN. A different language is allowed only if it is clearly faster to build with for a given part, and that choice is recorded in §9. | Build speed comes first: every step in §8 should be quick to write, run and test. Nothing to install, works offline. |
 | C2 | **Forwarding behaves exactly as it does now.** Bytes go to the client before they are recorded. A parsing or recording failure is logged and the forwarding carries on. | The dashboard must never break or slow down the agent. |
 | C3 | Everything binds to `127.0.0.1` only. | Traffic contains prompts, file contents, tokens. |
 | C4 | Credentials are redacted *before* they are stored (`authorization`, `x-api-key`, `cookie`, and any header matching `*token*`/`*secret*`). | Nothing on disk or in the browser holds a usable credential. |
