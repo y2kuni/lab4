@@ -14,6 +14,12 @@ and the reply is streamed back byte for byte as it arrives.
 
     python3 proxy.py --port 9000
     python3 proxy.py --upstream https://chatgpt.com/backend-api/codex   # for Codex
+    python3 proxy.py --log traffic.jsonl     # also keep a session log (mode 0600)
+    python3 proxy.py --no-print              # quiet terminal
+
+Recording (recorder.py, store.py) is an observer: each chunk is sent to the
+client first and handed to the recorder after. A recorder failure is logged and
+forwarding carries on.
 """
 
 from __future__ import annotations
@@ -36,6 +42,8 @@ SKIP = {
 }
 
 UPSTREAM = "https://api.anthropic.com"
+PRINT = True
+REC = None  # recorder.Recorder, set in main()
 
 
 def stamp() -> str:
@@ -60,18 +68,20 @@ class Tap(BaseHTTPRequestHandler):
     def relay(self) -> None:
         length = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(length) if length else b""
+        rec = REC.start(self.command, self.path, self.headers.items(), body) if REC else None
 
         # 1. Print what the agent sent.
-        print(f"\n{'=' * 78}\n[{stamp()}] >>> {self.command} {self.path}", flush=True)
-        for name, value in self.headers.items():
-            if name.lower() in ("authorization", "x-api-key"):
-                value = value[:16] + "..."
-            print(f"    {name}: {value}")
-        if body:
-            try:
-                print(json.dumps(json.loads(body), indent=2, ensure_ascii=False))
-            except ValueError:
-                print(body.decode("utf-8", "replace"))
+        if PRINT:
+            print(f"\n{'=' * 78}\n[{stamp()}] >>> {self.command} {self.path}", flush=True)
+            for name, value in self.headers.items():
+                if name.lower() in ("authorization", "x-api-key"):
+                    value = value[:16] + "..."
+                print(f"    {name}: {value}")
+            if body:
+                try:
+                    print(json.dumps(json.loads(body), indent=2, ensure_ascii=False))
+                except ValueError:
+                    print(body.decode("utf-8", "replace"))
 
         # 2. Forward it, headers intact.
         target = urlsplit(UPSTREAM)
@@ -85,14 +95,27 @@ class Tap(BaseHTTPRequestHandler):
             print(f"\n[{stamp()}] !!! cannot reach {UPSTREAM}: {e}", flush=True)
             self.send_error(502, f"proxy: cannot reach {UPSTREAM}: {e}")
             self.close_connection = True
+            if REC:
+                REC.response(rec, 502, "Bad Gateway", [])
+                REC.finish(rec, "error", f"proxy: cannot reach {UPSTREAM}: {e}")
             return
+        if REC:
+            REC.connected(rec)
         upstream.sock.settimeout(600)
         headers = {k: v for k, v in self.headers.items() if k.lower() not in SKIP}
-        upstream.request(self.command, target.path.rstrip("/") + self.path, body=body or None, headers=headers)
-        reply = upstream.getresponse()
+        try:
+            upstream.request(self.command, target.path.rstrip("/") + self.path, body=body or None, headers=headers)
+            reply = upstream.getresponse()
+        except BaseException as e:
+            if REC:
+                REC.finish(rec, "error", f"upstream failed before replying: {e!r}")
+            raise
 
         # 3. Stream the reply back as it arrives, printing it on the way.
-        print(f"\n[{stamp()}] <<< {reply.status} {reply.reason}", flush=True)
+        if REC:
+            REC.response(rec, reply.status, reply.reason, reply.getheaders())
+        if PRINT:
+            print(f"\n[{stamp()}] <<< {reply.status} {reply.reason}", flush=True)
         self.send_response(reply.status, reply.reason)
         for name, value in reply.getheaders():
             if name.lower() not in SKIP and name.lower() != "content-encoding":
@@ -101,30 +124,77 @@ class Tap(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command == "HEAD":
             self.close_connection = True
+            if REC:
+                REC.finish(rec)
             return
-        while chunk := reply.read1(4096):  # read1: pass on each chunk as it lands, don't wait for 4096 bytes
-            self.wfile.write(chunk)
-            self.wfile.flush()
-            sys.stdout.write(chunk.decode("utf-8", "replace"))
-            sys.stdout.flush()
+        first = True
+        while True:
+            try:
+                chunk = reply.read1(4096)  # read1: pass on each chunk as it lands, don't wait for 4096 bytes
+            except BaseException as e:
+                if REC:
+                    REC.finish(rec, "error", f"upstream stream failed: {e!r}")
+                raise
+            if not chunk:
+                break
+            try:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+            except BaseException as e:
+                if REC:
+                    REC.chunk(rec, chunk, first)
+                    REC.finish(rec, "aborted", f"client disconnected: {e!r}")
+                raise
+            if REC:  # only after the bytes have gone to the client (SPEC C2)
+                REC.chunk(rec, chunk, first)
+            first = False
+            if PRINT:
+                sys.stdout.write(chunk.decode("utf-8", "replace"))
+                sys.stdout.flush()
         self.close_connection = True
-        print(f"\n[{stamp()}] --- done", flush=True)
+        if REC:
+            REC.finish(rec)
+        if PRINT:
+            print(f"\n[{stamp()}] --- done", flush=True)
 
 
 def main() -> None:
-    global UPSTREAM
+    global UPSTREAM, PRINT, REC
     parser = argparse.ArgumentParser(description="Print and forward an agent's API traffic.")
     parser.add_argument("--port", type=int, default=8041)
     parser.add_argument("--upstream", default=UPSTREAM, help="where to forward (default: the Anthropic API)")
+    parser.add_argument("--log", metavar="PATH", help="append finished exchanges to a JSONL session log (mode 0600)")
+    parser.add_argument("--load", metavar="PATH", help="open a recorded session log; forwards nothing")
+    parser.add_argument("--no-print", action="store_true", help="don't dump traffic to the terminal")
+    parser.add_argument("--max-exchanges", type=int, default=2000, help="exchanges kept in memory (default 2000)")
     args = parser.parse_args()
     UPSTREAM = args.upstream.rstrip("/")
+    PRINT = not args.no_print
+
+    from recorder import Recorder
+    from store import Store
+
+    if args.load:
+        store = Store(max_exchanges=args.max_exchanges)
+        n = store.load(args.load)
+        print(f"loaded {n} exchanges, {len(store.blobs)} unique blocks from {args.load} (nothing is forwarded)", flush=True)
+        return
+
+    if args.log:
+        print(f"WARNING: logging to {args.log} (mode 0600). It holds full prompts, file contents and tool output; "
+              "credentials are redacted.", flush=True)
+    store = Store(max_exchanges=args.max_exchanges, log_path=args.log)
+    REC = Recorder(store)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Tap)
     print(f"proxy listening on http://localhost:{args.port}  ->  {UPSTREAM}")
-    print(f"run the agent with:  ANTHROPIC_BASE_URL=http://localhost:{args.port} claude")
+    print(f"run the agent with:  ANTHROPIC_BASE_URL=http://localhost:{args.port} claude", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        REC.flush()
+        store.close()
 
 
 if __name__ == "__main__":
