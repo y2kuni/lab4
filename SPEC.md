@@ -1,10 +1,12 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan; C1 fastest-to-build language)
+Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan; C1 fastest-to-build language; C6 and §3 passive capture: `proxy.py` unchanged, attach to already-running agents)
 
 ## 1. Goal
 
-While `proxy.py` is running, you can open a page in the browser that updates live and shows the conversation between the agent (Claude Code) and the model, in a form that is easy to read.
+While `proxy.py` is running, you can start the dashboard and open a page in the browser that updates live and shows the conversation between the agent (Claude Code) and the model, in a form that is easy to read.
+
+**`proxy.py` is not changed, and nothing has to be restarted.** The dashboard is started separately, *after* `proxy.py` and the agents are already running, and it captures their conversations from that moment on (C6, §3).
 
 **Readability is the main requirement.** During a busy agent turn, requests arrive every few seconds and each one carries the whole conversation again. At a glance you must be able to:
 
@@ -26,28 +28,35 @@ Statistics (tokens, cost, timing, tool usage) are useful, but they come second. 
 | # | Constraint | Why |
 |---|---|---|
 | C1 | **Use the language that is fastest to build with.** For this project that is Python with the standard library only: `proxy.py` and the existing code are already Python, and it needs no compile step, no package install and no new toolchain. The frontend is one HTML file with inline JS/CSS, with no build step and no CDN. A different language is allowed only if it is clearly faster to build with for a given part, and that choice is recorded in §9. | Build speed comes first: every step in §8 should be quick to write, run and test. Nothing to install, works offline. |
-| C2 | **Forwarding behaves exactly as it does now.** Bytes go to the client before they are recorded. A parsing or recording failure is logged and the forwarding carries on. | The dashboard must never break or slow down the agent. |
+| C2 | **Forwarding behaves exactly as it does now.** The dashboard is never in the forwarding path: it only observes copies of the traffic. If the dashboard crashes, stops or falls behind, the agent and `proxy.py` are not affected. | The dashboard must never break or slow down the agent. |
 | C3 | Everything binds to `127.0.0.1` only. | Traffic contains prompts, file contents, tokens. |
 | C4 | Credentials are redacted *before* they are stored (`authorization`, `x-api-key`, `cookie`, and any header matching `*token*`/`*secret*`). | Nothing on disk or in the browser holds a usable credential. |
 | C5 | Recorded content is untrusted. It is never inserted as HTML: use `textContent`, or a markdown renderer that escapes everything and allows only safe tags. | Tool results contain arbitrary file and web content. |
+| C6 | **`proxy.py` is not changed** (not a line, not a flag), and the agents and `proxy.py` are not restarted or reconfigured. The dashboard must attach to a `proxy.py` that is already running and to agents that are already talking to it. | Long agent sessions are already in progress and must not be interrupted to be observed. |
 
 ## 3. Architecture
 
 ```
- claude ──HTTP──▶ proxy :8041 ──HTTPS──▶ api.anthropic.com
-                     │ tee (after forwarding each chunk)
+ claude ──HTTP (plain, loopback)──▶ proxy.py :8041 ──HTTPS──▶ api.anthropic.com
+   (already running)                 (unchanged, already running)
+            │
+            └── passive copy of the loopback packets on port 8041
                      ▼
-                 Recorder ──▶ in-memory store ──▶ traffic.jsonl (optional)
-                     │
-                     ▼
-              Dashboard server :8042  ──SSE──▶ browser (dashboard.html)
+            dashboard.py: Capture ──▶ Recorder ──▶ in-memory store ──▶ traffic.jsonl (optional)
+                                                       │
+                                                       ▼
+                                        Dashboard server :8042 ──SSE──▶ browser (dashboard.html)
 ```
 
-- **Same process, separate port.** `proxy.py` starts a second `ThreadingHTTPServer` on `--dash-port` (default 8042) that serves the dashboard and its API. The API port only ever carries API traffic, so no path can clash.
-- **Recorder.** For each exchange it captures the request (method, path, redacted headers, body), and then the response: status, headers, raw bytes, and timing marks (request received, upstream connected, first byte, last byte). It parses the Anthropic SSE stream *incrementally* so the dashboard can show the reply while it is still arriving.
-- **Store.** An in-memory list of exchanges plus a content-addressed blob store (§3.1). It is thread-safe because each request runs on its own handler thread.
-- **Persistence.** Off by default (D3). `--log traffic.jsonl` appends one line per finished exchange, with file mode `0600`. `--load traffic.jsonl` opens a recorded session in the dashboard without forwarding anything.
-- New CLI flags: `--dash-port`, `--no-dash`, `--log PATH`, `--load PATH`, `--harness-patterns PATH`, `--no-print` (turns off today's terminal dump; printing stays on by default).
+- **Separate program, started any time.** `dashboard.py` runs as its own process. It does not import, wrap or replace `proxy.py`, and it can be started and stopped while `proxy.py` and the agents keep running.
+- **Capture (how it sees traffic without touching `proxy.py`).** Between the agent and `proxy.py` the traffic is plain HTTP on `127.0.0.1:8041`. The dashboard listens passively on the loopback interface (a Linux `AF_PACKET` raw socket from the standard library, filtered to TCP port 8041), reassembles each TCP connection, and parses the HTTP request and the streamed response from it. It only reads copies of packets, so it cannot delay or change them (C2). This needs `CAP_NET_RAW` (for example `sudo python3 dashboard.py`, or `setcap` on a dedicated interpreter); without it the dashboard exits with a clear message saying so.
+- **Joining agents that are already running.** Connections that were already open when capture started are skipped until their next request (the start of a reply cannot be recovered). That costs nothing: every Messages API request carries the **whole conversation so far**, so the first request captured from an agent already shows its full history, its system prompt and its tools. Exchanges that started before capture are counted in the header ("2 in-flight exchanges missed").
+- **Port and upstream.** `--proxy-port` (default 8041) names the port `proxy.py` listens on. The capture never needs to see the HTTPS side, so nothing is decrypted.
+- **Recorder.** For each exchange it records the request (method, path, redacted headers, body), and then the response: status, headers, raw bytes, and timing marks (request seen, first response byte, last byte; there is no "upstream connected" mark, because that happens inside `proxy.py`). It parses the Anthropic SSE stream *incrementally* so the dashboard can show the reply while it is still arriving.
+- **Store.** An in-memory list of exchanges plus a content-addressed blob store (§3.1). It is thread-safe.
+- **Persistence.** Off by default (D3). `--log traffic.jsonl` appends one line per finished exchange, with file mode `0600`. `--load traffic.jsonl` opens a recorded session in the dashboard without capturing anything (and without needing `CAP_NET_RAW`).
+- CLI flags, all on `dashboard.py`: `--proxy-port`, `--dash-port`, `--log PATH`, `--load PATH`, `--harness-patterns PATH`. `proxy.py` keeps printing to its own terminal as it does today.
+- **Relay (optional, not required).** A recording relay in front of `proxy.py` (`relay.py`) may be kept for agents started later without privileges, but it is never needed: agents that are already running are always handled by capture.
 
 ### 3.1 Deduplication (needed for this to work at all)
 
@@ -108,7 +117,7 @@ Every request repeats the system prompt, every tool definition, and all earlier 
 
 ### 4.3 Threads
 
-Claude Code sends several separate conversations through the same proxy: the main agent loop, subagents, and small side calls (titles, summaries, token counts). Mixing them in one feed would make it unreadable, so each exchange is given a **thread**:
+Claude Code sends several separate conversations through the same `proxy.py`: the main agent loop, subagents, and small side calls (titles, summaries, token counts). Mixing them in one feed would make it unreadable, so each exchange is given a **thread**:
 
 1. An exchange continues a thread when its `messages` start with the previous exchange's messages in that thread, with the same system prompt.
 2. Otherwise it starts a new thread.
@@ -249,6 +258,8 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 ## 6. Robustness
 
 - Requests that are invalid JSON, cut off, or not UTF-8 are still recorded and shown raw with a "could not parse" badge.
+- **Capture gaps.** If packets are missed (for example under heavy load) and a connection cannot be reassembled, that exchange is shown with a "capture incomplete" badge and whatever was recovered, never silently dropped. Later requests in the same thread still show the full conversation, because each request carries all of it.
+- If `proxy.py` is stopped and restarted, capture simply continues with the new connections; the dashboard does not need restarting.
 - If the client disconnects partway through, the exchange is marked `aborted` together with whatever was received.
 - Upstream errors (4xx/5xx, including `overloaded_error` and rate limits) show the error body prominently. `retry-after` and rate-limit headers appear in the detail.
 - Memory: the store keeps the most recent 2,000 exchanges (configurable). Older ones stay in the JSONL log.
@@ -257,12 +268,12 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 
 ## 7. Acceptance criteria
 
-1. Run `python3 proxy.py`, then run Claude Code against it and open `http://localhost:8042`. The first request appears within 1s of being sent, and the reply text streams in live.
+1. With `python3 proxy.py` and one or more Claude Code agents **already running**, start `python3 dashboard.py` and open `http://localhost:8042`. The next request from each agent appears within 1s of being sent, with that agent's full conversation so far, and the reply text streams in live. Nothing is restarted.
 2. With 50 or more exchanges, it takes one glance to say which exchange carried the human's prompt and which ones were tool loops, without opening anything.
 3. For any tool call, its result is visible next to it, with a link to the request it arrived in.
 4. The full system prompt and every tool definition can be read in full, and changes between requests are flagged.
 5. Filtering on one tool name, or on errors only, gives the right subset, and the filter is in the URL.
-6. Forwarding is unchanged: the same output for the same traffic as before, and no measurable delay added to time to first byte (< 5 ms).
+6. `proxy.py` is unchanged (`git diff` on it is empty), and forwarding is unchanged: the same output for the same traffic, and no measurable delay added to time to first byte (< 5 ms) whether the dashboard is running, stopped, or crashed.
 7. No credential appears in the store, the log, the API responses or the page.
 8. `--load traffic.jsonl` replays a saved session in the same UI.
 9. With two terminals running at once, each running a subagent, every timeline row and every conversation view shows the correct short terminal ID and the correct agent, and each subagent links to the call in its parent that launched it.
@@ -287,7 +298,8 @@ Where there was a choice, the safest option was taken.
 
 | # | Question | Decision | Why it is the safe choice |
 |---|---|---|---|
-| D1 | Dashboard on the API port, or on its own port? | **Its own port** (`--dash-port`, default 8042, bound to `127.0.0.1`). The API port carries only API traffic. | No dashboard path can clash with or intercept an API path, and the forwarding code stays untouched. |
+| D1 | Dashboard on the API port, or on its own port? | **Its own process and its own port** (`dashboard.py`, `--dash-port`, default 8042, bound to `127.0.0.1`). The API port carries only API traffic. | No dashboard path can clash with or intercept an API path, and `proxy.py` stays untouched (C6). |
 | D2 | Patterns for spotting harness-injected text: hard-coded or configurable? | **Built-in defaults, overridable** with an optional `harness_patterns.json`. A block that matches no rule is shown as **👤 You**. Every harness label shows the rule that matched it. | A wrong match can never hide a real human prompt behind the muted style, and every classification can be checked. |
 | D3 | JSONL log on by default? | **Off by default.** It is written only with `--log PATH`, using file mode `0600`, with credentials already redacted (C4). On startup the terminal prints a warning that the log contains prompts and file contents. | Nothing sensitive is written to disk unless you ask for it. |
 | D4 | "Export thread as Markdown"? | **Not in v1.** Copy buttons on single messages (§5.4) are enough. | Avoids an easy way to move whole sessions (code, secrets in tool output) out of the local tool. It can come back later with redaction built in. |
+| D5 | How does the dashboard see traffic without changing `proxy.py` or restarting agents? | **Passive loopback capture** of port 8041 (§3). A relay is optional and never required. | It is the only option that reaches agents already pointed at `proxy.py`, and as an observer of packet copies it cannot break or slow forwarding. The cost is needing `CAP_NET_RAW`, which is asked for explicitly. |
