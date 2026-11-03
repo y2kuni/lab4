@@ -22,7 +22,6 @@ import subprocess
 import tempfile
 import time
 
-from tests.harness import free_port
 
 CHROME = next((c for c in ("google-chrome", "chromium", "chromium-browser") if shutil.which(c)), None)
 
@@ -94,13 +93,19 @@ class Browser:
         self.console: list[str] = []
 
     def __enter__(self):
-        self.port = free_port()
         self.profile = tempfile.mkdtemp(prefix="cdp-")
         self.proc = subprocess.Popen([CHROME, "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run",
                                       "--hide-scrollbars", f"--user-data-dir={self.profile}",
-                                      f"--remote-debugging-port={self.port}", "about:blank"],
+                                      "--remote-debugging-port=0", "about:blank"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 20
+        port_file = os.path.join(self.profile, "DevToolsActivePort")
+        while not os.path.exists(port_file) or not open(port_file).read().strip():
+            if time.time() > deadline or self.proc.poll() is not None:
+                raise RuntimeError("Chrome did not start")
+            time.sleep(0.05)
+        with open(port_file) as f:
+            self.port = int(f.read().split()[0])
         while True:
             try:
                 c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)

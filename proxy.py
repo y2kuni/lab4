@@ -177,12 +177,15 @@ def main() -> None:
 
     import dashboard
     ui = dashboard.ui_config(args.harness_patterns)
+    ui["session"] = args.load or datetime.now().isoformat(timespec="seconds")
     from recorder import Recorder
     from store import Store
+    from threads import Threads
 
     if args.load:
         store = Store(max_exchanges=args.max_exchanges)
         n = store.load(args.load)
+        Threads(store, ui["harness_rules"]).rebuild()
         print(f"loaded {n} exchanges, {len(store.blobs)} unique blocks from {args.load} (nothing is forwarded)", flush=True)
         if args.no_dash:
             return
@@ -198,6 +201,7 @@ def main() -> None:
         print(f"WARNING: logging to {args.log} (mode 0600). It holds full prompts, file contents and tool output; "
               "credentials are redacted.", flush=True)
     store = Store(max_exchanges=args.max_exchanges, log_path=args.log)
+    Threads(store, ui["harness_rules"])
     REC = Recorder(store)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Tap)
     if not args.no_dash:

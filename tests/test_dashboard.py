@@ -147,7 +147,7 @@ class Dashboard(unittest.TestCase):
         time.sleep(0.2)
         self.send("text_stream.sse", **{"x-chunks": "10", "x-gap-ms": "20"})
         self.assertTrue(wait_for(lambda: any(e["event"] == "exchange.end" for e in c1.events)))
-        kinds = [e["event"] for e in c1.events]
+        kinds = [e["event"] for e in c1.events if e["event"] != "threads"]
         self.assertEqual(kinds[0], "exchange.start")
         self.assertIn("exchange.delta", kinds)
         text = "".join(n.get("append", "") for e in c1.events if e["event"] == "exchange.delta"

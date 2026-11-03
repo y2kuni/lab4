@@ -83,7 +83,8 @@ class DashHandler(BaseHTTPRequestHandler):
                 with self.store.lock:
                     seq = self.store.seq
                     items = self.store.list_summaries(since)
-                self._json({"seq": seq, "exchanges": items})
+                    threads = self.store.threads.labels if self.store.threads else {}
+                self._json({"seq": seq, "exchanges": items, "threads": threads})
             elif m := re.fullmatch(r"/api/exchanges/(\d+)", path):
                 ex = self.store.get(int(m.group(1)))
                 self._json(ex) if ex else self._not_found()

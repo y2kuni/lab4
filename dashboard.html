@@ -202,6 +202,31 @@ input.search { width: 100%; padding: 6px 10px; border: 1px solid var(--border); 
 .errh { font-size: 11px; margin-top: 6px; color: var(--muted); }
 .errbox { margin-bottom: 8px; }
 
+.chip.th { font-weight: 600; cursor: default; }
+.th0 { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-bg); }
+.th1 { color: #0f8a6c; } .th2 { color: #b5406b; } .th3 { color: #8a6d0b; } .th4 { color: #5b5fc7; } .th5 { color: #a0522d; } .th6 { color: #2d7fa0; }
+.ths { color: var(--faint); font-weight: 400; }
+.tr { overflow: hidden; text-overflow: ellipsis; }
+.t-you { color: var(--you); font-weight: 600; }
+.t-result { color: var(--result); }
+.t-harness, .t-retry { color: var(--muted); }
+.good { color: var(--ok); } .bad { color: var(--err); }
+.oc .o-model { color: var(--model); }
+.oc .o-call { color: var(--call); }
+.row .what { min-width: 0; }
+.newmeta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.newmeta a.chip.link:empty { display: none; }
+.changes { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 4px; }
+.chip.warnchip { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }
+a.chip.warnchip { text-decoration: none; cursor: pointer; }
+.dview { max-height: 60vh; overflow: auto; }
+.dview .dskip { color: var(--faint); font-style: italic; }
+.tdiff { font-family: var(--mono); padding: 2px 8px; border-radius: 4px; margin: 2px 0; }
+.callref { font-size: 11px; color: var(--call); margin: 6px 0 -2px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.newmsgs .msg { margin: 6px 0 10px; }
+button.linkish { background: none; border: 0; padding: 2px 0; color: var(--model); text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prevreply { border-left: 3px solid var(--border); padding-left: 8px; }
+
 @media (max-width: 900px) {
   #main { grid-template-columns: 1fr; }
   #right { display: none; }
@@ -291,7 +316,8 @@ const S = {
   live: new Map(),      // id -> reply being built from exchange.delta notes
   seq: 0,
   follow: true, paused: false, buffer: [],
-  tab: "conversation",
+  tab: "new",
+  threads: {},
   toolQuery: "",
   config: {},
   newCount: 0,
@@ -305,6 +331,7 @@ async function loadAll() {
   S.ex.clear(); S.order = [];
   for (const s of data.exchanges) S.ex.set(s.id, s);
   S.order = [...S.ex.keys()].sort((a, b) => b - a);
+  S.threads = data.threads || {};
   S.seq = data.seq;
   if (S.follow && S.order.length) S.selected = S.order[0];
   renderAll();
@@ -320,7 +347,7 @@ function connect() {
     reconnectTimer = setTimeout(connect, backoff);
     backoff = Math.min(backoff * 2, 15000);
   };
-  for (const t of ["exchange.start", "exchange.delta", "exchange.end", "exchange.error", "resync"])
+  for (const t of ["exchange.start", "exchange.delta", "exchange.end", "exchange.error", "threads", "resync"])
     es.addEventListener(t, e => {
       S.seq = Math.max(S.seq, Number(e.lastEventId) || 0);
       const ev = { type: t, data: JSON.parse(e.data) };
@@ -331,6 +358,7 @@ function handle(ev) {
   const d = ev.data;
   switch (ev.type) {
     case "resync": loadAll().catch(console.error); return;
+    case "threads": S.threads = d.threads || {}; scheduleTimeline(); return;
     case "exchange.start": upsert(d, true); break;
     case "exchange.delta": applyNotes(d.id, d.notes); break;
     case "exchange.end": case "exchange.error":
@@ -404,19 +432,16 @@ let tlQueued = false;
 function scheduleTimeline() { if (!tlQueued) { tlQueued = true; requestAnimationFrame(() => { tlQueued = false; renderTimeline(); }); } }
 function rowParts(s) {
   const isErr = !!s.error || (s.status || 0) >= 400;
-  const l1 = [el("span", { class: "id" }, "#" + s.id)];
-  if (s.thread) l1.push(el("span", { class: "chip" }, s.thread));
-  l1.push(el("span", { class: "what" }, s.kind === "other" ? `${s.method} ${s.path}` : (s.model || s.kind)));
+  const l1 = [el("span", { class: "id" }, "#" + s.id), threadChip(s.thread)];
+  l1.push(el("span", { class: "what" }, s.trigger ? triggerNode(s.trigger) : s.kind === "other" ? `${s.method} ${s.path}` : (s.model || s.kind)));
   if (s.state === "streaming" || s.state === "pending") l1.push(el("span", { class: "spin", title: "streaming" }));
   if (isErr) l1.push(el("span", { class: "chip err" }, "✗ " + (s.status && s.status >= 400 ? s.status : "error")));
-  for (const b of s.badges || []) l1.push(el("span", { class: "chip warn" }, b));
-  const l2 = [];
-  l2.push(el("span", { class: "what" }, isErr ? (s.error || "") :
-    s.kind === "count_tokens" ? "count_tokens" : s.kind === "other" ? (s.status ? `${s.status}` : "") :
-    s.stop_reason ? "stop: " + s.stop_reason : (s.state === "done" ? "" : "…")));
+  for (const b of s.badges || []) l1.push(el("span", { class: "chip warn" }, b === "history rewritten" ? "⚠ rewritten" : b));
   const u = s.usage;
-  l2.push(el("span", { class: "nums" }, (u ? `${fmtN(inTokens(u))}→${fmtN(u.output_tokens)} · ` : "") + fmtMs(s.t && s.t.total_ms != null ? s.t.total_ms : s.t && s.t.ttfb_ms)));
-  l2.push(el("span", { class: "nums", title: s.t ? absTime(s.t.start) : "" }, s.t ? fmtAgo(s.t.start) : ""));
+  const l2 = [el("span", { class: "what" }, outcomeNode(s)),
+    el("span", { class: "nums", title: u ? `in ${inTokens(u)} (cache read ${u.cache_read_input_tokens || 0}) → out ${u.output_tokens || 0}` : "" },
+      (u ? `${fmtN(inTokens(u))}→${fmtN(u.output_tokens)} · ` : "") + fmtMs(s.t && s.t.total_ms != null ? s.t.total_ms : s.t && s.t.ttfb_ms)),
+    el("span", { class: "nums", title: s.t ? absTime(s.t.start) : "" }, s.t ? fmtAgo(s.t.start) : "")];
   return { isErr, l1, l2 };
 }
 function renderTimeline() {
@@ -464,6 +489,261 @@ function move(delta) {
   select(S.order[i < 0 ? 0 : i], true);
   const tl = $("#tl"), h = rowH(), top = i * h;
   if (top < tl.scrollTop) tl.scrollTop = top; else if (top + h > tl.scrollTop + tl.clientHeight) tl.scrollTop = top + h - tl.clientHeight;
+}
+
+// ---------- threads (SPEC §4.3) ----------
+function storageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function storageSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
+const renameKey = tid => `thread-name:${S.config.session || ""}:${tid}`;
+function threadLabel(tid) { const t = S.threads[tid] || {}; return storageGet(renameKey(tid)) || t.label || tid; }
+function threadColor(tid) {
+  const t = S.threads[tid] || {};
+  if (t.role === "main") return 0;
+  if (t.role === "side") return "s";
+  const n = parseInt(String(tid).replace(/\D/g, ""), 10) || 0;
+  return 1 + (n % 6);
+}
+function threadChip(tid) {
+  if (!tid) return null;
+  return el("span", { class: `chip th th${threadColor(tid)}`, title: `thread ${tid} · double-click to rename`,
+    ondblclick: e => { e.stopPropagation(); renameThread(tid); } }, threadLabel(tid));
+}
+function renameThread(tid) {
+  const name = prompt(`Rename thread "${threadLabel(tid)}" (empty = default):`, storageGet(renameKey(tid)) || "");
+  if (name === null) return;
+  storageSet(renameKey(tid), name.trim());
+  scheduleTimeline(); renderDetail();
+}
+
+// What made the request happen, and what the reply did (SPEC §5.3)
+function groupTools(list) {
+  const m = new Map();
+  for (const t of list) { const k = t.name; const g = m.get(k) || { name: k, n: 0, err: 0 }; g.n++; if (t.error) g.err++; m.set(k, g); }
+  return [...m.values()];
+}
+function triggerNode(tr) {
+  if (!tr) return null;
+  if (tr.kind === "you") return el("span", { class: "tr t-you" }, "👤 ", el("span", null, `“${tr.text}”`));
+  if (tr.kind === "result") return el("span", { class: "tr t-result" }, groupTools(tr.tools).map((g, i) => [i ? ", " : "", "◧ ", g.name, g.n > 1 ? ` ×${g.n}` : "", " ", g.err ? el("span", { class: "bad" }, "✗") : el("span", { class: "good" }, "✓")]));
+  if (tr.kind === "harness") return el("span", { class: "tr t-harness" }, "⚙ harness context");
+  if (tr.kind === "retry") return el("span", { class: "tr t-retry" }, "↻ retry, same messages");
+  if (tr.kind === "count") return el("span", { class: "tr t-harness" }, "Σ count tokens");
+  return el("span", { class: "tr" }, tr.text || "");
+}
+function outcomeNode(s) {
+  if (s.error) return el("span", { class: "oc bad" }, "✗ " + s.error);
+  const o = s.outcome;
+  if (s.state === "streaming" || s.state === "pending") return el("span", { class: "oc muted" }, "receiving…");
+  if (!o) return el("span", { class: "oc muted" }, s.kind === "other" ? `${s.method} ${s.path}` : s.stop_reason ? "stop: " + s.stop_reason : "");
+  if (o.kind === "count") return el("span", { class: "oc muted" }, o.text);
+  const parts = [];
+  if (o.text) parts.push(el("span", { class: "o-model" }, "◆ ", `“${o.text}”`));
+  if (o.calls && o.calls.length) parts.push(el("span", { class: "o-call" }, (o.text ? "  → " : "") + "⟳ " + o.calls.map(c => c.name + (c.n > 1 ? ` ×${c.n}` : "")).join(", ")));
+  if (!parts.length) parts.push(el("span", { class: "muted" }, "stop: " + (o.stop || "?")));
+  return el("span", { class: "oc" }, parts);
+}
+
+// ---------- full exchanges and diffs (SPEC §5.5) ----------
+async function getFull(id) {
+  if (S.full.has(id)) return S.full.get(id);
+  const f = await getJSON("/api/exchanges/" + id);
+  const s = S.ex.get(id);
+  if (s && s.state !== "streaming" && s.state !== "pending") S.full.set(id, f);
+  return f;
+}
+const hitRate = u => { const t = inTokens(u); return t ? (u.cache_read_input_tokens || 0) / t : null; };
+
+async function computeChanges(full, prev) {
+  const out = { chips: [], sysDiffs: [], toolDiff: null };
+  const req = full.request;
+  if (req.rewritten) {
+    const r = req.rewritten;
+    out.chips.push({ warn: true, text: `history rewritten: ${r.removed} message${r.removed === 1 ? "" : "s"} replaced by ${r.added}` });
+  }
+  if (!prev) return out;
+  const p = prev.request;
+  // system blocks
+  const ps = p.system || [], cs = req.system || [];
+  if (ps.join() !== cs.join()) {
+    const n = Math.max(ps.length, cs.length);
+    let changed = 0;
+    for (let i = 0; i < n; i++) if (ps[i] !== cs[i]) { changed++; out.sysDiffs.push({ i, before: ps[i], after: cs[i] }); }
+    out.chips.push({ text: `system: ${changed} block${changed === 1 ? "" : "s"} changed`, warn: true, target: "system-diff" });
+  }
+  // tools, by name
+  const pt = p.tools || [], ct = req.tools || [];
+  if (pt.join() !== ct.join()) {
+    const [a, b] = await Promise.all([blobs(pt), blobs(ct)]);
+    const A = new Map(a.map((t, i) => [t.name, pt[i]])), B = new Map(b.map((t, i) => [t.name, ct[i]]));
+    const added = [...B.keys()].filter(k => !A.has(k)), removed = [...A.keys()].filter(k => !B.has(k));
+    const changed = [...B.keys()].filter(k => A.has(k) && A.get(k) !== B.get(k));
+    out.toolDiff = { added, removed, changed, A, B };
+    const bits = [];
+    if (added.length) bits.push(`+${added.length} (${added.join(", ")})`);
+    if (removed.length) bits.push(`−${removed.length} (${removed.join(", ")})`);
+    if (changed.length) bits.push(`${changed.length} changed (${changed.join(", ")})`);
+    if (bits.length) out.chips.push({ text: "tools " + bits.join(" "), warn: true, target: "tools-diff" });
+  }
+  // model and parameters
+  const keys = ["model", "max_tokens", "stream", "thinking", "metadata"];
+  const diffs = keys.filter(k => JSON.stringify(p[k]) !== JSON.stringify(req[k]));
+  const pp = p.params || {}, cp = req.params || {};
+  for (const k of new Set([...Object.keys(pp), ...Object.keys(cp)])) if (JSON.stringify(pp[k]) !== JSON.stringify(cp[k])) diffs.push(k);
+  if (diffs.includes("model")) out.chips.push({ warn: true, text: `model ${p.model} → ${req.model}` });
+  const rest = diffs.filter(k => k !== "model");
+  if (rest.length) out.chips.push({ text: "parameters changed: " + rest.join(", "), target: "params-diff", diffKeys: rest });
+  out.paramDiff = rest.map(k => ({ k, before: k in pp || k in cp ? pp[k] : p[k], after: k in pp || k in cp ? cp[k] : req[k] }));
+  // cache hit-rate drop: where cost jumps
+  const h0 = prev.reply && prev.reply.usage ? hitRate(prev.reply.usage) : null;
+  const h1 = full.reply && full.reply.usage ? hitRate(full.reply.usage) : null;
+  if (h0 != null && h1 != null && h0 - h1 > 0.2) out.chips.push({ warn: true, text: `cache hit ${Math.round(h0 * 100)}% → ${Math.round(h1 * 100)}%` });
+  return out;
+}
+
+// Line diff: trims the common head and tail, then LCS on what is left.
+function lineDiff(a, b) {
+  const A = a.split("\n"), B = b.split("\n");
+  let p = 0;
+  while (p < A.length && p < B.length && A[p] === B[p]) p++;
+  let ea = A.length, eb = B.length;
+  while (ea > p && eb > p && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  const a2 = A.slice(p, ea), b2 = B.slice(p, eb), n = a2.length, m = b2.length;
+  const mid = [];
+  if (n * m > 4e6) { a2.forEach(l => mid.push(["-", l])); b2.forEach(l => mid.push(["+", l])); }
+  else {
+    const W = m + 1, L = new Uint32Array((n + 1) * W);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      L[i * W + j] = a2[i] === b2[j] ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a2[i] === b2[j]) { mid.push([" ", a2[i]]); i++; j++; }
+      else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) mid.push(["-", a2[i++]]);
+      else mid.push(["+", b2[j++]]);
+    }
+    while (i < n) mid.push(["-", a2[i++]]);
+    while (j < m) mid.push(["+", b2[j++]]);
+  }
+  return [...A.slice(0, p).map(l => [" ", l]), ...mid, ...A.slice(ea).map(l => [" ", l])];
+}
+function diffView(ops, ctx = 3) {
+  const keep = new Array(ops.length).fill(false);
+  ops.forEach(([op], i) => { if (op !== " ") for (let k = Math.max(0, i - ctx); k <= Math.min(ops.length - 1, i + ctx); k++) keep[k] = true; });
+  const rows = [];
+  let skipped = 0;
+  const flush = () => { if (skipped) rows.push(el("span", { class: "dskip" }, `⋯ ${skipped} unchanged line${skipped === 1 ? "" : "s"}\n`)); skipped = 0; };
+  ops.forEach(([op, line], i) => {
+    if (!keep[i]) { skipped++; return; }
+    flush();
+    rows.push(el("span", { class: op === "+" ? "da" : op === "-" ? "dd" : "" }, `${op} ${line}\n`));
+  });
+  flush();
+  return el("pre", { class: "txt mono diff dview" }, rows);
+}
+const blockText = b => b == null ? "" : typeof b.text === "string" ? b.text : JSON.stringify(b, null, 2);
+
+async function renderChanges(ch, full, prev, token) {
+  const box = el("div");
+  if (ch.sysDiffs.length) {
+    const sec = el("div", { class: "sec", id: "system-diff" }, el("h3", null, `System prompt changes since #${prev.id}`));
+    for (const d of ch.sysDiffs) {
+      const [b0, b1] = await Promise.all([d.before ? blob(d.before) : null, d.after ? blob(d.after) : null]);
+      if (token !== detailToken) return box;
+      const what = !d.before ? "added" : !d.after ? "removed" : "changed";
+      sec.append(el("div", { class: "blk k-sys" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, `📜 block ${d.i + 1} ${what}`)),
+        el("div", { class: "bb" }, diffView(lineDiff(blockText(b0), blockText(b1))))));
+    }
+    box.append(sec);
+  }
+  if (ch.toolDiff) {
+    const t = ch.toolDiff, sec = el("div", { class: "sec", id: "tools-diff" }, el("h3", null, `Tool changes since #${prev.id}`));
+    for (const name of t.added) sec.append(el("div", { class: "tdiff da" }, "+ ", name));
+    for (const name of t.removed) sec.append(el("div", { class: "tdiff dd" }, "− ", name));
+    for (const name of t.changed) {
+      const [x, y] = await Promise.all([blob(t.A.get(name)), blob(t.B.get(name))]);
+      if (token !== detailToken) return box;
+      sec.append(el("div", { class: "blk k-call" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, `⟳ ${name} changed`)),
+        el("div", { class: "bb" }, diffView(lineDiff(JSON.stringify(x, null, 2), JSON.stringify(y, null, 2))))));
+    }
+    box.append(sec);
+  }
+  if (ch.paramDiff && ch.paramDiff.length) {
+    box.append(el("div", { class: "sec", id: "params-diff" }, el("h3", null, `Parameter changes since #${prev.id}`),
+      el("div", { class: "box kv" }, ch.paramDiff.map(d => [el("div", null, d.k), el("div", { class: "mono" }, `${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}`)]))));
+  }
+  return box;
+}
+
+// ---------- "What's new" (SPEC §5.4.1) ----------
+async function renderNew(s, full, body, token) {
+  const req = full.request, n = (req.messages || []).length, nf = Math.min(req.new_from || 0, n);
+  body.append(el("div", { class: "muted" }, "Loading…"));
+  let prev = null, msgs;
+  try {
+    [prev, msgs] = await Promise.all([full.prev != null ? getFull(full.prev).catch(() => null) : null, blobs((req.messages || []).slice(Math.max(0, nf - 1)))]);
+  } catch (e) { body.replaceChildren(el("div", { class: "errbox" }, String(e))); return; }
+  if (token !== detailToken) return;
+  const ch = await computeChanges(full, prev);
+  if (token !== detailToken) return;
+  const parts = [];
+  const meta = el("div", { class: "newmeta" },
+    s.thread ? threadChip(s.thread) : null,
+    prev ? el("span", { class: "muted" }, "compared with ", exLink(prev.id, ""), " in this thread") : el("span", { class: "muted" }, "first request in this thread"),
+    el("span", { class: "muted" }, `· ${n} message${n === 1 ? "" : "s"}, ${n - nf} new`));
+  parts.push(meta);
+  if (ch.chips.length) parts.push(el("div", { class: "changes" }, ch.chips.map(c => el(c.target ? "a" : "span", {
+    class: "chip" + (c.warn ? " warnchip" : ""), href: c.target ? "#" : null,
+    onclick: c.target ? e => { e.preventDefault(); const t = document.getElementById(c.target); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } : null,
+  }, "⚠ ".repeat(c.warn ? 1 : 0), c.text))));
+  // the new messages
+  const offset = Math.max(0, nf - 1);
+  const names = new Map();
+  msgs.forEach(m => contentOf(m).forEach(b => { if (b.type && b.type.endsWith("tool_use")) names.set(b.id, b.name); }));
+  const ctx = { names, results: new Map(), links: full.links || {}, exId: s.id, pairs: false };
+  const newBox = el("div", { class: "newmsgs" });
+  if (nf >= n) newBox.append(el("div", { class: "muted box" }, prev ? `No new messages. The same conversation as #${prev.id} was sent again${s.badges && s.badges.includes("retry") ? " (a retry)" : ""}.` : "No messages."));
+  const calls = new Map();
+  msgs.forEach(m => contentOf(m).forEach(b => { if (b.type && b.type.endsWith("tool_use")) calls.set(b.id, b); }));
+  for (let i = nf; i < n; i++) {
+    const m = msgs[i - offset];
+    if (prev && m.role === "assistant" && i === nf && prev.reply) {
+      // This is the previous request's reply coming back as history; it is not news. One line, expandable.
+      const summary = contentOf(m).map(b => b.type === "text" ? `“${(b.text || "").replace(/\s+/g, " ").slice(0, 80)}”` : b.type && b.type.endsWith("tool_use") ? `⟳ ${b.name}` : b.type === "thinking" ? "" : b.type).filter(Boolean).join("  ");
+      const holder = el("div", { class: "msg prevreply" });
+      const draw = open => holder.replaceChildren(
+        el("button", { class: "linkish", onclick: () => draw(!open) }, open ? "▾ " : "▸ ", `#${i} assistant: the reply from #${prev.id} `, el("span", { class: "muted" }, summary)),
+        open ? el("div", { class: "mb" }, contentOf(m).map((b, j) => renderBlock(b, Object.assign({ role: m.role }, ctx), `${s.id}:${i}:${j}`))) : "");
+      draw(false);
+      newBox.append(holder);
+      continue;
+    }
+    newBox.append(el("div", { class: "msg" },
+      el("div", { class: "mh" }, el("span", { class: "role r-" + m.role }, m.role), el("span", { class: "mono muted" }, "#" + i)),
+      el("div", { class: "mb" }, contentOf(m).map((b, j) => {
+        // a result is the news here: show which call it answers
+        if (b.type === "tool_result") {
+          const callMsg = calls.get(b.tool_use_id);
+          return el("div", null, callMsg ? el("div", { class: "callref mono" }, `⟳ ${callMsg.name}: `, oneLine(callMsg.input)) : null, renderBlock(b, Object.assign({ role: m.role }, ctx), `${s.id}:${i}:${j}`));
+        }
+        return renderBlock(b, Object.assign({ role: m.role }, ctx), `${s.id}:${i}:${j}`);
+      }))));
+  }
+  parts.push(el("div", { class: "sec" }, el("h3", null, "New in this request"), newBox));
+  const reply = full.reply || S.live.get(s.id);
+  parts.push(el("div", { class: "replyhead" }, el("span", null, "Reply"), reply && reply.stop_reason ? el("span", { class: "chip" }, "stop: " + reply.stop_reason) : null));
+  parts.push(el("div", { id: "replysec" }));
+  body.replaceChildren(...parts);
+  fillReply(s, full);
+  if (prev) {
+    const changes = await renderChanges(ch, full, prev, token);
+    if (token !== detailToken) return;
+    body.append(changes);
+  }
+}
+function oneLine(input) {
+  if (!input || typeof input !== "object") return String(input ?? "");
+  const v = input.command || input.file_path || input.pattern || input.description || input.query || input.url || JSON.stringify(input);
+  const t = String(v).replace(/\s+/g, " ");
+  return t.length > 140 ? t.slice(0, 139) + "…" : t;
 }
 
 // ---------- blobs (fetched lazily, cached; SPEC §3.1) ----------
@@ -736,6 +1016,7 @@ function pairedResult(call, ctx, key) {
 
 // ---------- detail (SPEC §5.4) ----------
 const TABS = [
+  { id: "new", label: () => "What's new", render: renderNew },
   { id: "conversation", label: () => "Conversation", render: renderConversation },
   { id: "system", label: f => `System${f && f.request.system ? " " + f.request.system.length : ""}`, render: renderSystem },
   { id: "tools", label: f => `Tools${f && f.request.tools ? " " + f.request.tools.length : ""}`, render: renderTools },
@@ -743,7 +1024,6 @@ const TABS = [
   { id: "params", label: () => "Request", render: renderParams },
   { id: "raw", label: () => "Raw", render: renderRaw },
 ];
-S.tab = "conversation";
 let detailToken = 0;
 async function renderDetail() {
   const id = S.selected, box = $("#detail"), token = ++detailToken;
@@ -761,7 +1041,8 @@ async function renderDetail() {
   const head = el("div", { class: "dhead" },
     el("button", { id: "back", onclick: () => { document.body.classList.remove("detail-open"); scheduleTimeline(); } }, "← Back"),
     el("h2", null, `Exchange #${id}`),
-    el("span", { class: "meta" }, [s.thread, s.model, s.status, fmtMs(s.t && s.t.total_ms)].filter(Boolean).join(" · ")),
+    threadChip(s.thread),
+    el("span", { class: "meta" }, [s.model, s.status, fmtMs(s.t && s.t.total_ms)].filter(Boolean).join(" · ")),
     s.state === "streaming" || s.state === "pending" ? el("span", { class: "spin" }) : null,
     ...(s.badges || []).map(b => el("span", { class: "chip warn" }, b)));
   const tabBar = el("div", { class: "tabs" }, tabs.map(t => el("button", { class: tab.id === t.id ? "on" : "", onclick: () => { S.tab = t.id; renderDetail(); } }, t.label(full))));
@@ -840,7 +1121,7 @@ function rawToggle(value, normal) {
 let liveQueued = false;
 function scheduleLiveReply() {
   if (liveQueued) return; liveQueued = true;
-  requestAnimationFrame(() => { liveQueued = false; const s = S.ex.get(S.selected); if (s && (S.tab === "conversation" || S.tab === "reply")) fillReply(s, S.full.get(s.id)); });
+  requestAnimationFrame(() => { liveQueued = false; const s = S.ex.get(S.selected); if (s && (S.tab === "new" || S.tab === "conversation" || S.tab === "reply")) fillReply(s, S.full.get(s.id)); });
 }
 function fillReply(s, full) {
   const sec = $("#replysec"); if (!sec) return;
@@ -873,8 +1154,9 @@ async function renderReplyTab(s, full, body) {
 }
 
 async function renderSystem(s, full, body, token) {
-  const sys = await blobs(full.request.system);
+  const [sys, prev] = await Promise.all([blobs(full.request.system), full.prev != null ? getFull(full.prev).catch(() => null) : null]);
   if (token !== detailToken) return;
+  const prevSys = prev ? new Set(prev.request.system || []) : null;
   if (!sys.length) { body.append(el("div", { class: "muted" }, "No system prompt.")); return; }
   const total = sys.reduce((a, b) => a + (b.text || "").length, 0);
   body.append(el("div", { class: "muted sec" }, `${sys.length} block${sys.length === 1 ? "" : "s"} · ${sizeInfo(sys.map(b => b.text || "").join("\n"))}`));
@@ -882,15 +1164,21 @@ async function renderSystem(s, full, body, token) {
     const text = b.text || JSON.stringify(b);
     body.append(blockShell("sys", `📜 System · block ${i + 1}`, {
       raw: b, size: sizeInfo(text), copy: () => text,
-      extra: b.cache_control ? el("span", { class: "chip" }, "cache_control: " + (b.cache_control.type || "") + (b.cache_control.ttl ? " " + b.cache_control.ttl : "")) : null,
+      extra: [b.cache_control ? el("span", { class: "chip" }, "cache_control: " + (b.cache_control.type || "") + (b.cache_control.ttl ? " " + b.cache_control.ttl : "")) : null,
+        prevSys && !prevSys.has(full.request.system[i]) ? el("span", { class: "chip warnchip" }, `changed since #${prev.id}`) : null],
     }, () => collapsible(text, `sys:${full.request.system[i]}`, prePlain)));
   });
 }
 
 async function renderTools(s, full, body, token) {
-  const tools = await blobs(full.request.tools);
+  const [tools, prev] = await Promise.all([blobs(full.request.tools), full.prev != null ? getFull(full.prev).catch(() => null) : null]);
   if (token !== detailToken) return;
   if (!tools.length) { body.append(el("div", { class: "muted" }, "No tools in this request.")); return; }
+  const prevTools = prev ? new Set(prev.request.tools || []) : null;
+  const prevNames = prev ? new Set((await blobs(prev.request.tools)).map(t => t.name)) : null;
+  if (token !== detailToken) return;
+  const badge = (t, i) => !prevTools || prevTools.has(full.request.tools[i]) ? null
+    : el("span", { class: "chip warnchip" }, `${prevNames.has(t.name) ? "changed" : "new"} since #${prev.id}`);
   const q = el("input", { class: "search", type: "search", placeholder: `Search ${tools.length} tools…`, value: S.toolQuery || "" });
   const list = el("div", { class: "tools" });
   const draw = () => {
@@ -901,7 +1189,7 @@ async function renderTools(s, full, body, token) {
       const req = new Set((t.input_schema && t.input_schema.required) || []);
       const desc = t.description || "";
       return el("details", { class: "tool", open: expanded.get("tool:" + t.name) || null, ontoggle: e => expanded.set("tool:" + t.name, e.currentTarget.open) },
-        el("summary", null, el("span", { class: "tname mono" }, t.name || t.type || "?"),
+        el("summary", null, el("span", { class: "tname mono" }, t.name || t.type || "?"), badge(t, i),
           el("span", { class: "tdesc" }, desc.split("\n")[0]),
           el("span", { class: "tparams" }, props.map(p => el("span", { class: "chip" + (req.has(p) ? " req" : ""), title: req.has(p) ? "required" : "optional" }, p)))),
         el("div", { class: "tbody" },
@@ -991,7 +1279,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "k") move(-1);
   else if (e.key === "f") setFollow(!S.follow);
   else if (e.key === "p") setPaused(!S.paused);
-  else if (e.key === "r") { S.tab = S.tab === "raw" ? "conversation" : "raw"; renderDetail(); }
+  else if (e.key === "r") { S.tab = S.tab === "raw" ? "new" : "raw"; renderDetail(); }
   else return;
   e.preventDefault();
 });

@@ -47,7 +47,9 @@ class Store:
         self.seq = 0
         self.events: collections.deque = collections.deque(maxlen=EVENT_BUFFER)
         self.subscribers: list[queue.Queue] = []
-        self.listeners: list = []                    # callables(ex) run when an exchange starts (threads, §4.3)
+        self.listeners: list = []                    # callables(store, ex) run when an exchange starts (threads, §4.3)
+        self.finish_listeners: list = []             # callables(store, ex) run when it ends, before it is logged
+        self.threads = None                          # threads.Threads, if attached
         self.result_at: dict[str, dict] = {}         # tool_use_id -> {"ex", "msg"}: where its result first arrived
         self.call_at: dict[str, int] = {}            # tool_use_id -> exchange whose reply made the call
         self.log_path = log_path
@@ -273,6 +275,8 @@ class Store:
         if state == "aborted":
             ex["badges"].append("aborted")
         self._index_calls(ex)
+        for fn in self.finish_listeners:
+            fn(self, ex)
         self._log(ex, raw)
         self.emit("exchange.error" if ex["error"] else "exchange.end", self.summary(ex))
 

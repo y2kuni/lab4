@@ -120,6 +120,23 @@ class LiveUI(unittest.TestCase):
         finally:
             b.resize(1400, 900)
 
+    def test_7b_system_prompt_diff(self):
+        b = self.b
+        body = json.loads(fixture("request_messages.json"))
+        body["system"][1]["text"] = "Be concise.\nline two\nline three"
+        call(self.proxy.port, json.dumps(body).encode(), {"x-fixture": "text_stream.sse"})
+        body["system"][1]["text"] = "Be concise.\nline 2 changed\nline three"
+        body["max_tokens"] = 1000
+        call(self.proxy.port, json.dumps(body).encode(), {"x-fixture": "text_stream.sse"})
+        b.js("setFollow(true); S.tab = 'new'; null")
+        b.wait("document.querySelector('#system-diff')", timeout=5)
+        diff = b.js("document.querySelector('#system-diff').textContent")
+        self.assertIn("- line two", diff)
+        self.assertIn("+ line 2 changed", diff)
+        self.assertIn("max_tokens", b.js("document.querySelector('.changes').textContent"))
+        b.js("S.tab = 'system'; renderDetail(); null")
+        b.wait("document.querySelector('.k-sys .warnchip')")
+
     def test_8_no_console_errors(self):
         self.assertEqual([c for c in self.b.console if "EXCEPTION" in c or "rror" in c], [])
 
@@ -205,6 +222,7 @@ class DemoUI(unittest.TestCase):
 
     def test_tool_call_paired_with_result(self):            # acceptance 3
         b = self.b
+        b.js("convShown.set(8, 0); null")
         self.open(8)
         calls = b.js("document.querySelectorAll('#tabbody .msg .k-call').length")
         self.assertGreater(calls, 0)
@@ -268,6 +286,47 @@ class DemoUI(unittest.TestCase):
         self.open(5)
         b.wait("document.querySelector('.errbox')")
         self.assertIn("overloaded_error", b.js("document.querySelector('.errbox').textContent"))
+
+    def test_rows_tell_prompts_from_tool_loops(self):    # acceptance 2
+        b = self.b
+        b.js("S.tab = 'new'; null")
+        rows = b.js("""S.order.map(id => { const s = S.ex.get(id); return [id, s.trigger && s.trigger.kind]; })""")
+        kinds = dict((i, k) for i, k in rows)
+        self.assertEqual(kinds[3], "you")
+        self.assertEqual(kinds[4], "result")
+        self.assertEqual(kinds[6], "retry")
+        b.js("document.querySelector('#tl').scrollTop = 0; renderTimeline(); null")
+        you = b.js("[...document.querySelectorAll('.row')].filter(r => r.querySelector('.t-you')).map(r => +r.dataset.id)")
+        self.assertTrue({3, 9, 15}.issubset(set(you)), you)
+        self.assertFalse({4, 5, 7, 8}.intersection(you))
+        self.assertIn("main", b.js("document.querySelector('.row[data-id=\"3\"] .chip.th').textContent"))
+        self.assertIn("subagent 1", b.js("document.querySelector('.row[data-id=\"10\"] .chip.th').textContent"))
+
+    def test_whats_new(self):
+        b = self.b
+        self.open(17, "new")
+        b.wait("document.querySelector('.changes')")
+        chips = b.js("document.querySelector('.changes').textContent")
+        self.assertIn("history rewritten", chips)
+        self.assertIn("cache hit", chips)
+        self.open(15, "new")
+        b.wait("document.querySelector('#tools-diff')")
+        self.assertIn("mcp__docs__search", b.js("document.querySelector('#tools-diff').textContent"))
+        self.open(15, "tools")
+        b.wait("document.querySelector('.chip.warnchip')")
+        self.assertIn("new since #14", b.js("document.querySelector('.chip.warnchip').textContent"))
+        self.open(4, "new")
+        b.wait("document.querySelector('.prevreply') && document.querySelector('.callref')")
+        self.assertIn("python3 -m pytest", b.js("document.querySelector('.callref').textContent"))
+
+    def test_thread_rename(self):
+        b = self.b
+        b.js("window.prompt = () => 'my main loop'; null")
+        b.js("document.querySelector('#tl').scrollTop = 0; renderTimeline(); null")
+        b.js("document.querySelector('.row .chip.th0').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); null")
+        b.wait("document.querySelector('.row .chip.th0').textContent === 'my main loop'")
+        b.js("window.prompt = () => ''; document.querySelector('.row .chip.th0').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); null")
+        b.wait("document.querySelector('.row .chip.th0').textContent === 'main'")
 
     def test_zz_no_console_errors(self):
         self.assertEqual([c for c in self.b.console if "EXCEPTION" in c], [])
