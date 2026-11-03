@@ -167,10 +167,13 @@ def main() -> None:
     parser.add_argument("--load", metavar="PATH", help="open a recorded session log; forwards nothing")
     parser.add_argument("--no-print", action="store_true", help="don't dump traffic to the terminal")
     parser.add_argument("--max-exchanges", type=int, default=2000, help="exchanges kept in memory (default 2000)")
+    parser.add_argument("--dash-port", type=int, default=8042, help="dashboard port (default 8042)")
+    parser.add_argument("--no-dash", action="store_true", help="don't start the dashboard")
     args = parser.parse_args()
     UPSTREAM = args.upstream.rstrip("/")
     PRINT = not args.no_print
 
+    import dashboard
     from recorder import Recorder
     from store import Store
 
@@ -178,6 +181,14 @@ def main() -> None:
         store = Store(max_exchanges=args.max_exchanges)
         n = store.load(args.load)
         print(f"loaded {n} exchanges, {len(store.blobs)} unique blocks from {args.load} (nothing is forwarded)", flush=True)
+        if args.no_dash:
+            return
+        dash = dashboard.make_server(store, args.dash_port, {"mode": "load", "source": args.load})
+        print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
+        try:
+            dash.serve_forever()
+        except KeyboardInterrupt:
+            pass
         return
 
     if args.log:
@@ -186,6 +197,9 @@ def main() -> None:
     store = Store(max_exchanges=args.max_exchanges, log_path=args.log)
     REC = Recorder(store)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Tap)
+    if not args.no_dash:
+        dashboard.start(store, args.dash_port, {"mode": "live", "upstream": UPSTREAM})
+        print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
     print(f"proxy listening on http://localhost:{args.port}  ->  {UPSTREAM}")
     print(f"run the agent with:  ANTHROPIC_BASE_URL=http://localhost:{args.port} claude", flush=True)
     try:

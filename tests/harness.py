@@ -12,7 +12,9 @@ Every request it receives is kept in `.received` for assertions.
 
 from __future__ import annotations
 
+import base64
 import http.client
+import json
 import os
 import socket
 import subprocess
@@ -43,6 +45,40 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def synth_sse(content: list, stop_reason: str = "end_turn", usage: dict | None = None,
+              model: str = "claude-opus-5-5", msg_id: str = "msg_synth", split: int = 12) -> bytes:
+    """Build an Anthropic SSE stream for the given final content blocks."""
+    usage = usage or {"input_tokens": 10, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    out = []
+
+    def ev(name, data):
+        out.append(f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n")
+
+    ev("message_start", {"type": "message_start", "message": {
+        "id": msg_id, "type": "message", "role": "assistant", "model": model, "content": [],
+        "stop_reason": None, "stop_sequence": None, "usage": dict(usage, output_tokens=1)}})
+    for i, b in enumerate(content):
+        if b["type"] == "text":
+            ev("content_block_start", {"type": "content_block_start", "index": i, "content_block": {"type": "text", "text": ""}})
+            t = b["text"]
+            for j in range(0, len(t), split):
+                ev("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": t[j:j + split]}})
+        elif b["type"] == "thinking":
+            ev("content_block_start", {"type": "content_block_start", "index": i, "content_block": {"type": "thinking", "thinking": "", "signature": ""}})
+            ev("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {"type": "thinking_delta", "thinking": b["thinking"]}})
+            ev("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {"type": "signature_delta", "signature": "c2ln"}})
+        elif b["type"] == "tool_use":
+            ev("content_block_start", {"type": "content_block_start", "index": i, "content_block": {"type": "tool_use", "id": b["id"], "name": b["name"], "input": {}}})
+            js = json.dumps(b["input"])
+            for j in range(0, len(js), split):
+                ev("content_block_delta", {"type": "content_block_delta", "index": i, "delta": {"type": "input_json_delta", "partial_json": js[j:j + split]}})
+        ev("content_block_stop", {"type": "content_block_stop", "index": i})
+    out_tokens = max(1, sum(len(json.dumps(b)) for b in content) // 4)
+    ev("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop_reason, "stop_sequence": None}, "usage": {"output_tokens": out_tokens}})
+    ev("message_stop", {"type": "message_stop"})
+    return "".join(out).encode("utf-8")
+
+
 class _Upstream(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -61,7 +97,11 @@ class _Upstream(BaseHTTPRequestHandler):
         self.server.received.append({"method": self.command, "path": self.path,
                                      "headers": dict(self.headers.items()), "body": body})
         name = self.headers.get("x-fixture", "text_stream.sse")
-        data = fixture(name)
+        if self.headers.get("x-sse-json"):
+            spec = json.loads(base64.b64decode(self.headers["x-sse-json"]))
+            data, name = synth_sse(**spec), "synth.sse"
+        else:
+            data = fixture(name)
         status = int(self.headers.get("x-status", "200"))
         chunks = max(1, int(self.headers.get("x-chunks", "5")))
         gap = int(self.headers.get("x-gap-ms", "2")) / 1000
@@ -128,6 +168,8 @@ class Proxy:
         self.args = [sys.executable, "-u", self.script, "--port", str(self.port), "--upstream", upstream]
         if dash:
             self.args += ["--dash-port", str(self.dash_port)]
+        elif "baseline" not in Path(self.script).name:
+            self.args += ["--no-dash"]
         self.args += extra or []
         self.out_path = None
 
@@ -136,7 +178,7 @@ class Proxy:
         self.out = tempfile.NamedTemporaryFile("w+b", prefix="proxy-out-", delete=False)
         self.out_path = self.out.name
         self.proc = subprocess.Popen(self.args, stdout=self.out, stderr=subprocess.STDOUT, cwd=str(ROOT))
-        ports = [self.port] + ([self.dash_port] if self.dash_port else [])
+        ports = ([] if "--load" in self.args else [self.port]) + ([self.dash_port] if self.dash_port else [])
         deadline = time.time() + 10
         for p in ports:
             while True:

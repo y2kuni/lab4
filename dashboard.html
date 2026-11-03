@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proxy Traffic</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --border: #dde1e7; --text: #1d2330; --muted: #657085;
+  --faint: #9aa3b2; --accent: #2f6fde; --accent-bg: #e6eefc; --sel: #e9f0fd; --hover: #f3f6fa;
+  --you: #2f6fde; --you-bg: #eaf1fd; --harness: #7a8394; --harness-bg: #f1f2f4;
+  --model: #7b45c8; --model-bg: #f4eefc; --think: #8a7fa3; --think-bg: #f5f3f8;
+  --call: #b5660b; --call-bg: #fdf3e6; --result: #13817a; --result-bg: #e7f6f4;
+  --err: #cc2b3b; --err-bg: #fdecee; --sys: #8a5a2b; --sys-bg: #f8f1e9; --ok: #1f8a4c; --warn: #b07a00;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --row: 50px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --panel: #1a1e26; --panel-2: #212631; --border: #2e3440; --text: #e3e7ee; --muted: #9aa4b5;
+    --faint: #6b7486; --accent: #6ea2ff; --accent-bg: #1e2b44; --sel: #1f2a3d; --hover: #1f242e;
+    --you: #6ea2ff; --you-bg: #1b2740; --harness: #8d96a6; --harness-bg: #22262e;
+    --model: #b28cf0; --model-bg: #261f35; --think: #a69cc0; --think-bg: #23202b;
+    --call: #e5a04f; --call-bg: #2e2416; --result: #4cc5bb; --result-bg: #152b2a;
+    --err: #ff6b78; --err-bg: #3a1c21; --sys: #d1a06c; --sys-bg: #2c2319; --ok: #4fc47f; --warn: #e0b040;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1a1e26; --panel-2: #212631; --border: #2e3440; --text: #e3e7ee; --muted: #9aa4b5;
+  --faint: #6b7486; --accent: #6ea2ff; --accent-bg: #1e2b44; --sel: #1f2a3d; --hover: #1f242e;
+  --you: #6ea2ff; --you-bg: #1b2740; --harness: #8d96a6; --harness-bg: #22262e;
+  --model: #b28cf0; --model-bg: #261f35; --think: #a69cc0; --think-bg: #23202b;
+  --call: #e5a04f; --call-bg: #2e2416; --result: #4cc5bb; --result-bg: #152b2a;
+  --err: #ff6b78; --err-bg: #3a1c21; --sys: #d1a06c; --sys-bg: #2c2319; --ok: #4fc47f; --warn: #e0b040;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+button { font: inherit; color: inherit; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+button:hover { border-color: var(--faint); }
+button.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+code, pre, .mono { font-family: var(--mono); font-size: 12px; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+
+/* header */
+#hdr { display: flex; align-items: center; gap: 14px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+#hdr h1 { font-size: 14px; margin: 0; font-weight: 600; }
+#conn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+#conn i { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); display: inline-block; }
+#conn.live i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+#conn.reconnecting i { background: var(--warn); }
+#conn.offline i { background: var(--err); }
+#totals { color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+#totals b { color: var(--text); font-weight: 600; }
+#totals .err b { color: var(--err); }
+#hdr .sp { flex: 1; }
+
+/* panes */
+#main { flex: 1; display: grid; grid-template-columns: minmax(300px, 34%) 1fr; min-height: 0; }
+#left { display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; background: var(--panel); }
+#tlbar { padding: 6px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; color: var(--muted); }
+#tlwrap { position: relative; flex: 1; min-height: 0; }
+#tl { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
+#tl-inner { position: relative; }
+#pill { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 2; background: var(--accent); color: #fff; border: 0; border-radius: 99px; padding: 3px 12px; display: none; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+#empty { padding: 24px 16px; color: var(--muted); }
+.row { position: absolute; left: 0; right: 0; height: var(--row); padding: 5px 10px 5px 12px; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; cursor: pointer; overflow: hidden; }
+.row:hover { background: var(--hover); }
+.row.sel { background: var(--sel); border-left-color: var(--accent); }
+.row.err { border-left-color: var(--err); }
+.row .l1, .row .l2 { display: flex; gap: 6px; align-items: center; white-space: nowrap; overflow: hidden; }
+.row .l2 { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.row .id { font-family: var(--mono); color: var(--muted); min-width: 34px; }
+.row .what { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .nums { color: var(--faint); font-size: 11px; font-family: var(--mono); }
+.chip { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; line-height: 17px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); white-space: nowrap; }
+.chip.err { background: var(--err-bg); color: var(--err); border-color: color-mix(in srgb, var(--err) 35%, transparent); }
+.chip.warn { color: var(--warn); }
+.spin { width: 10px; height: 10px; border: 2px solid var(--faint); border-top-color: var(--accent); border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* detail */
+#right { overflow-y: auto; min-height: 0; }
+#detail { padding: 14px 20px 40px; max-width: 1200px; }
+#detail .placeholder { color: var(--muted); padding: 30px 0; }
+.dhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.dhead h2 { font-size: 15px; margin: 0; }
+.dhead .meta { color: var(--muted); }
+#back { display: none; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 12px 0; flex-wrap: wrap; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; color: var(--muted); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent); background: none; }
+.sec { margin: 14px 0; }
+.sec > h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
+.box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; }
+.kv > div:nth-child(odd) { color: var(--muted); }
+.kv > div { min-width: 0; overflow-wrap: anywhere; }
+.errbox { background: var(--err-bg); border: 1px solid var(--err); color: var(--text); border-radius: 8px; padding: 10px 12px; }
+.errbox b { color: var(--err); }
+.scrollx { overflow-x: auto; }
+pre.code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; white-space: pre; overflow-x: auto; max-height: 70vh; overflow-y: auto; }
+.copy { font-size: 11px; padding: 0 7px; }
+.evt { border-top: 1px dashed var(--border); padding: 4px 0; display: grid; grid-template-columns: 34px 170px 1fr; gap: 8px; }
+.evt:first-child { border-top: 0; }
+.evt .n { color: var(--faint); font-family: var(--mono); }
+.evt .name { font-family: var(--mono); color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
+.evt pre { white-space: pre-wrap; word-break: break-all; }
+table.hdrs { border-collapse: collapse; width: 100%; }
+table.hdrs td { padding: 2px 8px 2px 0; vertical-align: top; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+table.hdrs td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+.muted { color: var(--muted); }
+
+/* message blocks (kind vocabulary, SPEC §5.2) */
+.blk { border: 1px solid var(--border); border-left: 3px solid var(--k, var(--border)); background: var(--kb, var(--panel)); border-radius: 6px; margin: 6px 0; }
+.blk > .bh { display: flex; gap: 8px; align-items: center; padding: 4px 10px; font-size: 12px; color: var(--muted); }
+.blk > .bh .lbl { color: var(--k); font-weight: 600; }
+.blk > .bb { padding: 2px 10px 8px; }
+.k-you { --k: var(--you); --kb: var(--you-bg); }
+.k-harness { --k: var(--harness); --kb: var(--harness-bg); }
+.k-model { --k: var(--model); --kb: var(--model-bg); }
+.k-think { --k: var(--think); --kb: var(--think-bg); }
+.k-call { --k: var(--call); --kb: var(--call-bg); }
+.k-result { --k: var(--result); --kb: var(--result-bg); }
+.k-err { --k: var(--err); --kb: var(--err-bg); }
+.k-sys { --k: var(--sys); --kb: var(--sys-bg); }
+
+@media (max-width: 900px) {
+  #main { grid-template-columns: 1fr; }
+  #right { display: none; }
+  body.detail-open #left { display: none; }
+  body.detail-open #right { display: block; }
+  #back { display: inline-block; }
+  #detail { padding: 12px 16px 40px; }
+  #hdr { padding: 8px 16px; }
+  .evt { grid-template-columns: 28px 1fr; }
+  .evt pre { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+<header id="hdr">
+  <h1>Proxy Traffic</h1>
+  <span id="conn" class="offline" title="connection to the proxy"><i></i><span>offline</span></span>
+  <span id="totals"></span>
+  <span class="sp"></span>
+  <button id="btn-follow" class="on" title="keep the newest exchange selected (f)">Follow</button>
+  <button id="btn-pause" title="freeze the view; events keep buffering (p)">Pause</button>
+</header>
+<div id="main">
+  <section id="left">
+    <div id="tlbar"><span id="tlcount">0 exchanges</span></div>
+    <div id="tlwrap">
+      <button id="pill"></button>
+      <div id="tl"><div id="tl-inner"></div><div id="empty">Waiting for traffic. Point the agent at the proxy: <code>ANTHROPIC_BASE_URL=http://localhost:8041 claude</code></div></div>
+    </div>
+  </section>
+  <section id="right"><div id="detail"><div class="placeholder">Select an exchange on the left.</div></div></section>
+</div>
+<script>
+"use strict";
+// SECURITY (SPEC C5): recorded content is untrusted. It is only ever inserted as text
+// (textContent / text nodes via el()). Nothing here parses strings as markup.
+
+// ---------- helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "text") n.textContent = v;
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat(Infinity)) {
+    if (c == null || c === false) continue;
+    n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return n;
+}
+const fmtN = n => n == null ? "–" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "k" : String(n);
+const fmtMs = ms => ms == null ? "–" : ms < 1000 ? Math.round(ms) + "ms" : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + "s";
+function fmtAgo(iso) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (!isFinite(s)) return "";
+  if (s < 5) return "now"; if (s < 60) return Math.round(s) + "s ago";
+  if (s < 3600) return Math.round(s / 60) + "m ago"; if (s < 86400) return Math.round(s / 3600) + "h ago";
+  return new Date(iso).toLocaleDateString();
+}
+const absTime = iso => new Date(iso).toLocaleString();
+async function getJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + " → " + r.status);
+  return r.json();
+}
+function copyText(text, btn) {
+  const done = () => { if (btn) { const t = btn.textContent; btn.textContent = "copied"; setTimeout(() => btn.textContent = t, 900); } };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => fallback());
+  else fallback();
+  function fallback() { const ta = el("textarea", { style: "position:fixed;opacity:0" }); ta.value = text; document.body.append(ta); ta.select(); try { document.execCommand("copy"); done(); } catch (e) {} ta.remove(); }
+}
+const copyBtn = getText => el("button", { class: "copy", title: "copy", onclick: e => { e.stopPropagation(); copyText(getText(), e.currentTarget); } }, "copy");
+function prettyMaybeJSON(text) { try { return JSON.stringify(JSON.parse(text), null, 2); } catch (e) { return text; } }
+function inTokens(u) { return u ? (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) : 0; }
+
+// ---------- state ----------
+const S = {
+  ex: new Map(),        // id -> summary
+  order: [],            // ids, newest first
+  selected: null,
+  full: new Map(),      // id -> full exchange (fetched on demand)
+  live: new Map(),      // id -> reply being built from exchange.delta notes
+  seq: 0,
+  follow: true, paused: false, buffer: [],
+  tab: "overview",
+  config: {},
+  newCount: 0,
+};
+
+// ---------- connection (SPEC §3.2, §6) ----------
+let es = null, backoff = 500, reconnectTimer = null;
+function setConn(state) { const c = $("#conn"); c.className = state; c.lastElementChild.textContent = state; }
+async function loadAll() {
+  const data = await getJSON("/api/exchanges");
+  S.ex.clear(); S.order = [];
+  for (const s of data.exchanges) S.ex.set(s.id, s);
+  S.order = [...S.ex.keys()].sort((a, b) => b - a);
+  S.seq = data.seq;
+  if (S.follow && S.order.length) S.selected = S.order[0];
+  renderAll();
+}
+function connect() {
+  if (es) es.close();
+  clearTimeout(reconnectTimer);
+  es = new EventSource("/api/events?last=" + S.seq);
+  es.onopen = () => { backoff = 500; setConn(S.config.mode === "load" ? "live" : "live"); };
+  es.onerror = () => {
+    es.close(); es = null;
+    setConn(backoff > 4000 ? "offline" : "reconnecting");
+    reconnectTimer = setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 15000);
+  };
+  for (const t of ["exchange.start", "exchange.delta", "exchange.end", "exchange.error", "resync"])
+    es.addEventListener(t, e => {
+      S.seq = Math.max(S.seq, Number(e.lastEventId) || 0);
+      const ev = { type: t, data: JSON.parse(e.data) };
+      if (S.paused && t !== "resync") { S.buffer.push(ev); updatePauseBtn(); } else handle(ev);
+    });
+}
+function handle(ev) {
+  const d = ev.data;
+  switch (ev.type) {
+    case "resync": loadAll().catch(console.error); return;
+    case "exchange.start": upsert(d, true); break;
+    case "exchange.delta": applyNotes(d.id, d.notes); break;
+    case "exchange.end": case "exchange.error":
+      upsert(d, false); S.live.delete(d.id); S.full.delete(d.id);
+      if (S.selected === d.id) renderDetail();
+      break;
+  }
+}
+function upsert(summary, isNew) {
+  const had = S.ex.has(summary.id);
+  S.ex.set(summary.id, summary);
+  if (!had) {
+    S.order.unshift(summary.id);
+    if (S.order.length > 1 && S.order[1] > summary.id) S.order.sort((a, b) => b - a);
+    const tl = $("#tl");
+    const atTop = tl.scrollTop < 4;
+    if (S.follow) { S.selected = summary.id; tl.scrollTop = 0; renderDetail(); }
+    else if (!atTop || S.selected !== null) {
+      // Keep what you're looking at still: shift down by one row, and count it in the pill (§5.3).
+      if (!atTop) tl.scrollTop += rowH();
+      S.newCount++;
+    }
+  }
+  scheduleTimeline();
+  scheduleTotals();
+}
+
+// Rebuild a streaming reply from delta notes (SPEC §4.2), for live display.
+function applyNotes(id, notes) {
+  let r = S.live.get(id);
+  if (!r) { r = { content: [], usage: null, stop_reason: null, error: null }; S.live.set(id, r); }
+  for (const n of notes) {
+    if (n.op === "start") { r.id = n.id; r.model = n.model; r.usage = n.usage; }
+    else if (n.op === "block") { r.content[n.index] = Object.assign({}, n.block, n.block.type === "tool_use" ? { _partial: "" } : {}); }
+    else if (n.op === "text") { const b = r.content[n.index] || (r.content[n.index] = { type: "text", text: "" }); b.text = (b.text || "") + n.append; }
+    else if (n.op === "thinking") { const b = r.content[n.index] || (r.content[n.index] = { type: "thinking", thinking: "" }); b.thinking = (b.thinking || "") + n.append; }
+    else if (n.op === "input") { const b = r.content[n.index]; if (b) b._partial = (b._partial || "") + n.append; }
+    else if (n.op === "block_stop") { const b = r.content[n.index]; if (b && "_partial" in b) { delete b._partial; if (n.input !== undefined) b.input = n.input; if (n.input_raw) b.input_raw = n.input_raw; } }
+    else if (n.op === "meta") { r.stop_reason = n.stop_reason; r.usage = n.usage; }
+    else if (n.op === "error") { r.error = n.error; }
+    else if (n.op === "status") { const s = S.ex.get(id); if (s) { s.status = n.status; s.state = "streaming"; } }
+  }
+  const s = S.ex.get(id);
+  if (s && r.usage) s.usage = r.usage;
+  scheduleTimeline();
+  if (S.selected === id) scheduleLiveReply();
+}
+
+// ---------- header totals ----------
+let totalsQueued = false;
+function scheduleTotals() { if (!totalsQueued) { totalsQueued = true; requestAnimationFrame(() => { totalsQueued = false; renderTotals(); }); } }
+function renderTotals() {
+  let n = 0, tin = 0, cached = 0, out = 0, errs = 0;
+  for (const s of S.ex.values()) {
+    n++; const u = s.usage;
+    if (u) { tin += inTokens(u); cached += u.cache_read_input_tokens || 0; out += u.output_tokens || 0; }
+    if (s.error || (s.status || 0) >= 400) errs++;
+  }
+  const pct = tin ? Math.round(100 * cached / tin) : 0;
+  $("#totals").replaceChildren(
+    el("span", null, el("b", null, n), " req"),
+    el("span", null, el("b", null, fmtN(tin)), " in", tin ? ` (${pct}% cached)` : ""),
+    el("span", null, el("b", null, fmtN(out)), " out"),
+    el("span", { class: errs ? "err" : "" }, el("b", null, errs), errs === 1 ? " error" : " errors"));
+  $("#tlcount").textContent = `${n} exchange${n === 1 ? "" : "s"}`;
+}
+
+// ---------- timeline (virtualised, SPEC §5.3, §6) ----------
+const rowH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--row")) || 50;
+let tlQueued = false;
+function scheduleTimeline() { if (!tlQueued) { tlQueued = true; requestAnimationFrame(() => { tlQueued = false; renderTimeline(); }); } }
+function rowParts(s) {
+  const isErr = !!s.error || (s.status || 0) >= 400;
+  const l1 = [el("span", { class: "id" }, "#" + s.id)];
+  if (s.thread) l1.push(el("span", { class: "chip" }, s.thread));
+  l1.push(el("span", { class: "what" }, s.kind === "other" ? `${s.method} ${s.path}` : (s.model || s.kind)));
+  if (s.state === "streaming" || s.state === "pending") l1.push(el("span", { class: "spin", title: "streaming" }));
+  if (isErr) l1.push(el("span", { class: "chip err" }, "✗ " + (s.status && s.status >= 400 ? s.status : "error")));
+  for (const b of s.badges || []) l1.push(el("span", { class: "chip warn" }, b));
+  const l2 = [];
+  l2.push(el("span", { class: "what" }, isErr ? (s.error || "") :
+    s.kind === "count_tokens" ? "count_tokens" : s.kind === "other" ? (s.status ? `${s.status}` : "") :
+    s.stop_reason ? "stop: " + s.stop_reason : (s.state === "done" ? "" : "…")));
+  const u = s.usage;
+  l2.push(el("span", { class: "nums" }, (u ? `${fmtN(inTokens(u))}→${fmtN(u.output_tokens)} · ` : "") + fmtMs(s.t && s.t.total_ms != null ? s.t.total_ms : s.t && s.t.ttfb_ms)));
+  l2.push(el("span", { class: "nums", title: s.t ? absTime(s.t.start) : "" }, s.t ? fmtAgo(s.t.start) : ""));
+  return { isErr, l1, l2 };
+}
+function renderTimeline() {
+  const tl = $("#tl"), inner = $("#tl-inner"), h = rowH();
+  $("#empty").style.display = S.order.length ? "none" : "";
+  inner.style.height = S.order.length * h + "px";
+  const first = Math.max(0, Math.floor(tl.scrollTop / h) - 8);
+  const last = Math.min(S.order.length, Math.ceil((tl.scrollTop + tl.clientHeight) / h) + 8);
+  const rows = [];
+  for (let i = first; i < last; i++) {
+    const s = S.ex.get(S.order[i]); if (!s) continue;
+    const { isErr, l1, l2 } = rowParts(s);
+    rows.push(el("div", {
+      class: "row" + (s.id === S.selected ? " sel" : "") + (isErr ? " err" : ""), style: `top:${i * h}px`,
+      "data-id": s.id, onclick: () => select(s.id, true),
+    }, el("div", { class: "l1" }, l1), el("div", { class: "l2" }, l2)));
+  }
+  inner.replaceChildren(...rows);
+  const pill = $("#pill");
+  if (S.newCount > 0 && tl.scrollTop > 4) { pill.style.display = "block"; pill.textContent = `▲ ${S.newCount} new`; }
+  else { pill.style.display = "none"; if (tl.scrollTop <= 4) S.newCount = 0; }
+}
+function select(id, byUser) {
+  if (byUser && id !== S.order[0] && S.follow) setFollow(false);
+  S.selected = id;
+  document.body.classList.add("detail-open");
+  scheduleTimeline(); renderDetail();
+}
+function setFollow(on) {
+  S.follow = on; $("#btn-follow").classList.toggle("on", on);
+  if (on && S.order.length) { $("#tl").scrollTop = 0; S.newCount = 0; select(S.order[0], false); }
+}
+function setPaused(on) {
+  S.paused = on;
+  if (!on) { const buf = S.buffer; S.buffer = []; for (const ev of buf) handle(ev); }
+  updatePauseBtn();
+}
+function updatePauseBtn() {
+  const b = $("#btn-pause"); b.classList.toggle("on", S.paused);
+  b.textContent = S.paused ? `Resume${S.buffer.length ? " (" + S.buffer.length + " new)" : ""}` : "Pause";
+}
+function move(delta) {
+  if (!S.order.length) return;
+  const i = Math.max(0, Math.min(S.order.length - 1, S.order.indexOf(S.selected) + delta));
+  select(S.order[i < 0 ? 0 : i], true);
+  const tl = $("#tl"), h = rowH(), top = i * h;
+  if (top < tl.scrollTop) tl.scrollTop = top; else if (top + h > tl.scrollTop + tl.clientHeight) tl.scrollTop = top + h - tl.clientHeight;
+}
+
+// ---------- detail (SPEC §5.4) ----------
+const TABS = [
+  { id: "overview", label: "Overview", render: renderOverview },
+  { id: "raw", label: "Raw", render: renderRaw },
+];
+let detailToken = 0;
+async function renderDetail() {
+  const id = S.selected, box = $("#detail"), token = ++detailToken;
+  if (id == null) { box.replaceChildren(el("div", { class: "placeholder" }, "Select an exchange on the left.")); return; }
+  const s = S.ex.get(id); if (!s) return;
+  let full = S.full.get(id);
+  if (!full && s.state !== "streaming" && s.state !== "pending") {
+    try { full = await getJSON("/api/exchanges/" + id); S.full.set(id, full); } catch (e) { full = null; }
+    if (token !== detailToken) return;
+  }
+  const head = el("div", { class: "dhead" },
+    el("button", { id: "back", onclick: () => document.body.classList.remove("detail-open") }, "← Back"),
+    el("h2", null, `Exchange #${id}`),
+    el("span", { class: "meta" }, [s.thread, s.model, s.status, fmtMs(s.t && s.t.total_ms)].filter(Boolean).join(" · ")),
+    s.state === "streaming" ? el("span", { class: "spin" }) : null);
+  const tabs = el("div", { class: "tabs" }, TABS.map(t => el("button", { class: S.tab === t.id ? "on" : "", onclick: () => { S.tab = t.id; renderDetail(); } }, t.label)));
+  const body = el("div", { id: "tabbody" });
+  box.replaceChildren(head, tabs, body);
+  const tab = TABS.find(t => t.id === S.tab) || TABS[0];
+  await tab.render(s, full, body, token);
+}
+
+function renderOverview(s, full, body) {
+  if (s.error) body.append(el("div", { class: "errbox" }, el("b", null, "✗ Error  "), s.error));
+  const req = full ? full.request : null;
+  const kv = [["path", `${s.method} ${s.path}`], ["kind", s.kind], ["status", s.status ?? "…"], ["state", s.state],
+    ["started", s.t ? absTime(s.t.start) : "–"], ["connect / first byte / total", `${fmtMs(s.t.connected_ms)} / ${fmtMs(s.t.ttfb_ms)} / ${fmtMs(s.t.total_ms)}`]];
+  if (req && req.model) kv.push(["model", req.model], ["messages", (req.messages || []).length], ["system blocks", (req.system || []).length], ["tools", (req.tools || []).length], ["max_tokens", req.max_tokens ?? "–"]);
+  body.append(el("div", { class: "sec" }, el("h3", null, "Request"), el("div", { class: "box kv" }, kv.map(([k, v]) => [el("div", null, k), el("div", null, String(v))]))));
+  body.append(el("div", { class: "sec", id: "replysec" }));
+  fillReply(s, full);
+}
+let liveQueued = false;
+function scheduleLiveReply() { if (!liveQueued) { liveQueued = true; requestAnimationFrame(() => { liveQueued = false; const s = S.ex.get(S.selected); if (s && S.tab === "overview") fillReply(s, S.full.get(s.id)); }); } }
+function fillReply(s, full) {
+  const sec = $("#replysec"); if (!sec) return;
+  const reply = (full && full.reply) || S.live.get(s.id);
+  const parts = [el("h3", null, "Reply", reply && reply.stop_reason ? el("span", { class: "chip" }, "stop: " + reply.stop_reason) : null)];
+  if (!reply) parts.push(el("div", { class: "muted" }, s.kind === "messages" ? (s.state === "done" ? "No reply." : "Waiting for the reply…") : "Not a Messages API call. See Raw."));
+  else if (reply.count) parts.push(el("div", { class: "box" }, `input_tokens: ${reply.count.input_tokens}`));
+  else {
+    for (const b of reply.content || []) parts.push(basicBlock(b));
+    if (reply.usage) parts.push(el("div", { class: "muted mono" }, Object.entries(reply.usage).filter(([, v]) => typeof v === "number").map(([k, v]) => `${k}: ${v}`).join(" · ")));
+  }
+  sec.replaceChildren(...parts);
+}
+function basicBlock(b) {
+  if (b.type === "text") return el("div", { class: "blk k-model" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "◆ Model")), el("div", { class: "bb" }, el("pre", null, b.text || "")));
+  if (b.type === "thinking" || b.type === "redacted_thinking") return el("div", { class: "blk k-think" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "💭 Thinking")), el("div", { class: "bb" }, el("pre", null, b.thinking || "(redacted)")));
+  if (b.type === "tool_use" || b.type === "server_tool_use") {
+    const input = "_partial" in b ? b._partial : b.input_raw != null ? b.input_raw : JSON.stringify(b.input, null, 2);
+    return el("div", { class: "blk k-call" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "⟳ Tool call · " + (b.name || "?")), "_partial" in b ? el("span", null, "receiving…") : null),
+      el("div", { class: "bb" }, el("pre", { class: "code" }, input)));
+  }
+  return el("div", { class: "blk" }, el("div", { class: "bh" }, b.type || "block"), el("div", { class: "bb" }, el("pre", { class: "code" }, JSON.stringify(b, null, 2))));
+}
+
+async function renderRaw(s, full, body, token) {
+  body.append(el("div", { class: "muted" }, "Loading raw…"));
+  let raw;
+  try { raw = await getJSON(`/api/exchanges/${s.id}/raw`); } catch (e) { body.replaceChildren(el("div", { class: "errbox" }, String(e))); return; }
+  if (token !== detailToken) return;
+  const hdrTable = h => el("table", { class: "hdrs" }, h.map(([k, v]) => el("tr", null, el("td", null, k), el("td", null, v))));
+  const hdrText = h => h.map(([k, v]) => `${k}: ${v}`).join("\n");
+  const reqBody = prettyMaybeJSON(raw.request_body);
+  const sec = (title, copy, ...kids) => el("div", { class: "sec" }, el("h3", null, title, copy ? copyBtn(copy) : null), ...kids);
+  const parts = [
+    sec("Request headers (redacted)", () => hdrText(raw.request_headers), el("div", { class: "box scrollx" }, hdrTable(raw.request_headers))),
+    sec("Request body", () => raw.request_body,
+      raw.request_reconstructed ? el("div", { class: "muted" }, "Rebuilt from stored blocks; the exact bytes are kept only for recent exchanges.") : null,
+      el("pre", { class: "code" }, reqBody || "(empty)")),
+    sec(`Response headers · ${raw.status ?? "–"} ${raw.reason ?? ""}`, () => hdrText(raw.response_headers), el("div", { class: "box scrollx" }, hdrTable(raw.response_headers))),
+  ];
+  const events = parseSSE(raw.response_body);
+  if (events.length) {
+    parts.push(sec(`Response · ${events.length} SSE events`, () => raw.response_body,
+      el("div", { class: "box" }, events.map((e, i) => el("div", { class: "evt" }, el("span", { class: "n" }, i + 1), el("span", { class: "name" }, e.event), el("pre", null, e.data))))));
+  } else {
+    parts.push(sec("Response body", () => raw.response_body, el("pre", { class: "code" }, prettyMaybeJSON(raw.response_body) || "(empty)")));
+  }
+  body.replaceChildren(...parts);
+}
+function parseSSE(text) {
+  if (!text || !/^(event|data):/m.test(text)) return [];
+  const out = [];
+  for (const block of text.replace(/\r\n/g, "\n").split("\n\n")) {
+    if (!block.trim()) continue;
+    let name = "message"; const data = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) name = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    out.push({ event: name, data: data.join("\n") });
+  }
+  return out;
+}
+
+function renderAll() { renderTotals(); renderTimeline(); renderDetail(); }
+
+// ---------- wiring ----------
+$("#tl").addEventListener("scroll", scheduleTimeline, { passive: true });
+new ResizeObserver(scheduleTimeline).observe($("#tl"));
+$("#pill").addEventListener("click", () => { $("#tl").scrollTop = 0; S.newCount = 0; scheduleTimeline(); });
+$("#btn-follow").addEventListener("click", () => setFollow(!S.follow));
+$("#btn-pause").addEventListener("click", () => setPaused(!S.paused));
+document.addEventListener("keydown", e => {
+  if ((e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "j") move(1);
+  else if (e.key === "k") move(-1);
+  else if (e.key === "f") setFollow(!S.follow);
+  else if (e.key === "p") setPaused(!S.paused);
+  else if (e.key === "r") { S.tab = S.tab === "raw" ? "overview" : "raw"; renderDetail(); }
+  else return;
+  e.preventDefault();
+});
+setInterval(scheduleTimeline, 10000); // keep "12s ago" fresh
+
+(async function init() {
+  try { S.config = await getJSON("/api/config"); } catch (e) {}
+  if (S.config.mode === "load") document.title = "Proxy Traffic (replay)";
+  try { await loadAll(); } catch (e) { setConn("offline"); }
+  connect();
+})();
+</script>
+</body>
+</html>
