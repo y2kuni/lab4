@@ -1289,6 +1289,7 @@ setInterval(scheduleTimeline, 10000); // keep "12s ago" fresh
   try { S.config = await getJSON("/api/config"); } catch (e) {}
   compileRules();
   if (S.config.mode === "load") document.title = "Proxy Traffic (replay)";
+  if (S.config.mode === "sniff") $("#empty").replaceChildren(`Watching port ${S.config.port} for traffic. The next request any running agent sends will appear here.`);
   try { await loadAll(); } catch (e) { setConn("offline"); }
   connect();
 })();

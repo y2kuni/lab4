@@ -15,6 +15,14 @@ proxy.py is neither changed nor restarted. The page has its own port, bound to
                  |
               page :8042
 
+To watch agents that are ALREADY running against proxy.py (no new
+ANTHROPIC_BASE_URL, nothing restarted), capture the loopback traffic instead:
+
+    sudo python3 dashboard.py --sniff         # watches port 8041; page on http://localhost:8042
+
+The capture socket needs root; the program drops back to your user right after
+opening it, and only reads copies of packets (sniff.py).
+
 Other setups through flags: `--upstream https://api.anthropic.com` (no proxy.py
 at all), or put the relay behind proxy.py with
 `python3 proxy.py --upstream http://localhost:8040`.
@@ -208,6 +216,38 @@ def start(store, port: int, config: dict | None = None) -> ThreadingHTTPServer:
     return server
 
 
+def _run_sniffer(args, ui) -> None:
+    import sniff
+    from recorder import Recorder
+    from store import Store
+    from threads import Threads
+
+    try:
+        sock = sniff.open_capture("lo")
+    except PermissionError:
+        raise SystemExit("--sniff needs permission to capture packets. Run it with sudo:\n"
+                         f"    sudo python3 {Path(__file__).name} --sniff {args.sniff}")
+    user = sniff.drop_privileges()         # from here on, never root
+    if args.log:
+        print(f"WARNING: logging to {args.log} (mode 0600). It holds full prompts, file contents and tool output; "
+              "credentials are redacted.", flush=True)
+    store = Store(max_exchanges=args.max_exchanges, log_path=args.log)
+    Threads(store, ui["harness_rules"])
+    rec = Recorder(store)
+    start(store, args.dash_port, dict(ui, mode="sniff", port=args.sniff))
+    print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
+    print(f"watching 127.0.0.1:{args.sniff} on the loopback interface (read-only)"
+          + (f"; running as {user}" if user else ""), flush=True)
+    print("every request any agent sends to that port from now on is shown; nothing needs restarting", flush=True)
+    try:
+        sniff.Sniffer(rec, args.sniff).run(sock)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        rec.flush()
+        store.close()
+
+
 def _check_upstream(upstream: str) -> None:
     """Say so at startup if nothing answers at the upstream (e.g. proxy.py isn't running)."""
     import socket
@@ -234,6 +274,8 @@ def main() -> None:
                     help="where the relay forwards (default: the running proxy.py on http://localhost:8041)")
     ap.add_argument("--log", metavar="PATH", help="append finished exchanges to a JSONL session log (mode 0600)")
     ap.add_argument("--load", metavar="PATH", help="open a recorded session log; no relay is started")
+    ap.add_argument("--sniff", nargs="?", type=int, const=8041, metavar="PORT",
+                    help="watch already-running agents by capturing loopback traffic to PORT (default 8041); needs sudo")
     ap.add_argument("--max-exchanges", type=int, default=2000, help="exchanges kept in memory (default 2000)")
     ap.add_argument("--harness-patterns", metavar="PATH",
                     help="JSON rules for spotting harness-injected text (default: ./harness_patterns.json if present)")
@@ -253,6 +295,10 @@ def main() -> None:
             page.serve_forever()
         except KeyboardInterrupt:
             pass
+        return
+
+    if args.sniff:
+        _run_sniffer(args, ui)
         return
 
     if args.log:
