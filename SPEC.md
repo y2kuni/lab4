@@ -1,6 +1,6 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: final · 2026-11-02
+Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution)
 
 ## 1. Goal
 
@@ -76,6 +76,8 @@ Every request repeats the system prompt, every tool definition, and all earlier 
 {
   "id": 42,
   "thread": "t3",                    // §4.3
+  "terminal": "a1b2c3",              // short terminal ID, §4.3.1
+  "agent": "subagent 2",             // main | subagent N | side call, §4.3.1
   "method": "POST", "path": "/v1/messages",
   "kind": "messages",                // messages | count_tokens | other
   "t": { "start": "...", "connected_ms": 80, "ttfb_ms": 1450, "total_ms": 9200 },
@@ -112,7 +114,18 @@ Claude Code sends several separate conversations through the same proxy: the mai
 2. Otherwise it starts a new thread.
 3. Each thread gets a label: *main* (the longest-lived thread with the most tools), *subagent N*, or *side call* (no tools or a single turn). The label can be renamed in the UI.
 
+Threads never span terminals: two exchanges with different terminal IDs (§4.3.1) are always in different threads, even if their messages match.
+
 `new_from` is worked out against the previous exchange in the same thread. If the prefix doesn't match (for example after the conversation is compacted), the exchange is marked **"history rewritten"** and the changed range is shown.
+
+### 4.3.1 Terminal and agent attribution
+
+Several Claude Code terminals can share one proxy, and each terminal can run subagents. Every thread, and so every conversation view, must say **which terminal** it came from and **which agent** sent it.
+
+- **Terminal ID.** Taken from the client's session identifier: the `X-Claude-Code-Session-Id` header if present, otherwise the session part of `metadata.user_id`. It is shown shortened to its first 6 characters (`a1b2c3`) for readability, with the full ID on hover and in the detail. If two active terminals share the same 6 characters, both are lengthened until they differ. A request with no session identifier gets the terminal `?` and is still shown.
+- **Terminal label.** Each terminal also gets a stable color and a short name (`T1`, `T2`, … in order of first appearance) that can be renamed in the UI, like thread labels.
+- **Agent.** The agent that sent the exchange: *main*, *subagent N*, or *side call* (the thread label from §4.3). For a subagent, the thread is also linked to the tool call in the parent thread that launched it (an `Agent`/`Task` `tool_use` whose prompt matches the subagent's first user message). The subagent then shows its type and description from that call, e.g. `subagent 2 · Explore · "find auth code"`, plus a link "launched from #31 (main)". If no launching call is found, it shows as `subagent N · parent unknown`.
+- Both are stored on every exchange (`terminal`, `agent`, §4.1), so they survive `--log` / `--load`.
 
 ### 4.4 Non-Anthropic traffic
 
@@ -126,7 +139,7 @@ If the path or body doesn't look like the Messages API, the exchange gets `kind:
 ┌────────────────────────────────────────────────────────────────────────────┐
 │ ● live  12 req · 1.2M in (94% cached) · 18k out · ~$0.84 · 3 errors  [⏸][⚙]│  header
 ├─────────────────────┬──────────────────────────────────────────────────────┤
-│ filters / search    │  Exchange #42 · main · claude-… · 200 · 9.2s         │
+│ filters / search    │  #42 · T1 a1b2c3 · main · claude-… · 200 · 9.2s      │
 │ ─────────────────── │  ┌ What's new ─────────────────────────────────────┐ │
 │ #42 main  ⟳ Bash ✓  │  │ ◧ tool result  Bash  (exit 0, 34 lines)  ▸      │ │
 │ #41 main  ✎ Edit ✓  │  │ ◆ reply: "Tests pass. Next I'll…"  → Read ×2   │ │
@@ -165,7 +178,7 @@ Telling the human's prompt apart from harness-injected text is important: in Cla
 
 One line, with a second line on hover or when selected:
 
-- `#id`, a thread chip (colored per thread), and the relative time;
+- `#id`, a terminal chip (`T1 a1b2c3`, colored per terminal), an agent chip (`main` / `subagent 2` / `side`, colored per thread), and the relative time;
 - what triggered the request (the last new message): `👤 "fix the failing test…"` or `◧ Bash ✓`;
 - the outcome: `◆ "Tests pass…"`, `⟳ Read ×2`, or `stop: end_turn`;
 - small numbers: tokens in/out, latency, cost;
@@ -178,6 +191,8 @@ Live behaviour:
 - **Pause** (⏸) freezes the view; events still buffer in the background.
 
 ### 5.4 Exchange detail
+
+The detail header always shows the terminal (short ID and label) and the agent, with the subagent's launching call linked (§4.3.1). The Conversation view repeats this at its top, so a conversation is never shown without saying where it came from.
 
 Sections in this order, each one clearly separated and labelled:
 
@@ -212,7 +227,7 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 
 ### 5.7 Filtering and search
 
-- Filter chips: thread, kind (user prompt / tool call / errors only / side calls hidden), tool name (multi-select), model, status.
+- Filter chips: terminal, agent/thread, kind (user prompt / tool call / errors only / side calls hidden), tool name (multi-select), model, status.
 - Full-text search across message text, tool inputs and results. Matches are highlighted, and `n`/`N` jump between them.
 - Filters live in the URL hash, so a view can be bookmarked or reloaded.
 - **Errors only** is one click (`e`). The header's error count is a link to it.
@@ -250,6 +265,7 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 6. Forwarding is unchanged: the same output for the same traffic as before, and no measurable delay added to time to first byte (< 5 ms).
 7. No credential appears in the store, the log, the API responses or the page.
 8. `--load traffic.jsonl` replays a saved session in the same UI.
+9. With two terminals running at once, each running a subagent, every timeline row and every conversation view shows the correct short terminal ID and the correct agent, and each subagent links to the call in its parent that launched it.
 
 ## 8. Milestones
 
