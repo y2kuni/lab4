@@ -1,6 +1,6 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution)
+Status: final · 2026-11-02 · amended 2026-11-03 (§4.3.1 terminal and agent attribution; §8 incremental build plan)
 
 ## 1. Goal
 
@@ -269,11 +269,17 @@ All of these are drill-down entry points. Clicking a bar or a row filters the ti
 
 ## 8. Milestones
 
-1. **Recorder + store + JSONL**, with no UI yet (tested against saved SSE fixtures).
-2. **Dashboard server + SSE + timeline + raw view.**
-3. **Parsed detail:** message kinds, the conversation view, tool call/result pairing.
-4. **Threads + "what's new" + diffs.**
-5. **Stats, filters, search, keyboard, polish.**
+The initial build starts with a **very basic version that works end to end**, then adds the requirements of this spec gradually. Each step starts from a working dashboard, adds one slice of the spec, and ends with a working, tested dashboard. No step needs a later step to be useful.
+
+0. **Basic version.** Traffic is recorded (C2–C4 apply from the first line of code) and the dashboard page lists exchanges live, newest first: `#id`, time, model, status. Clicking a row shows the redacted request and response as plain, escaped text (C5). No parsing, no deduplication, no threads, no styling beyond readable defaults. Acceptance: criteria 6 and 7 (§7) already hold.
+1. **Recorder + store + JSONL:** deduplication (§3.1), incremental SSE parsing (§4.2), `--log` / `--load` (criterion 8).
+2. **Dashboard API + live SSE + timeline + raw view** (§3.2, §5.1, §5.3; criterion 1).
+3. **Parsed detail:** message kinds, the conversation view, tool call/result pairing (§5.2, §5.4; criteria 2–4).
+4. **Threads + "what's new" + diffs** (§4.3, §5.5).
+5. **Terminal and agent attribution** (§4.3.1; criterion 9).
+6. **Stats, filters, search, keyboard, polish** (§5.6–§5.9; criterion 5), then robustness (§6).
+
+Order rule: when a later requirement turns out to be needed earlier, add the smallest version of it at that point rather than building it in full ahead of time.
 
 ## 9. Decisions
 
