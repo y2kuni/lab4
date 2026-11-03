@@ -1,4 +1,4 @@
-"""TTFB overhead vs. the baseline proxy (PLAN 1.7, acceptance 6): must stay under 5 ms."""
+"""TTFB overhead (PLAN 1.7, acceptance 6): proxy.py -> dashboard relay vs. proxy.py alone, under 5 ms."""
 
 import os
 import statistics
@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from tests.harness import ROOT, FakeUpstream, Proxy, call, fixture
+from tests.harness import ROOT, Chain, FakeUpstream, Proxy, call, fixture
 
 SCRIPT = os.environ.get("PROXY_SCRIPT", str(ROOT / "proxy.py"))
 RUNS = int(os.environ.get("OVERHEAD_RUNS", "200"))
@@ -26,7 +26,7 @@ class Overhead(unittest.TestCase):
                 f.write(base_src)
             body = fixture("request_messages.json")
             hdr = {"x-fixture": "tool_use_stream.sse", "x-chunks": "8", "x-gap-ms": "1"}
-            with FakeUpstream() as up, Proxy(up.url, base) as pb, Proxy(up.url, SCRIPT) as pc:
+            with FakeUpstream() as up, Proxy(up.url, base) as pb, Chain(up.url, script=SCRIPT) as pc:
                 for p in (pb, pc):  # warm up
                     for _ in range(10):
                         call(p.port, body, hdr)

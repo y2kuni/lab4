@@ -5,7 +5,8 @@
     python3 tests/demo.py --fast          # no pauses between requests
     python3 tests/demo.py --log demo.jsonl
 
-It starts a fake upstream and proxy.py, then sends what Claude Code would send:
+It starts a fake upstream, dashboard.py, and the unchanged proxy.py pointed at
+the dashboard's relay, then sends what Claude Code would send:
 a main agent loop with tool calls and results, a subagent, side calls (title,
 count_tokens), an overloaded error and a retry, a failing tool, a compacted
 history, and some hostile content (HTML/script in tool output). Nothing leaves
@@ -179,32 +180,38 @@ def play(port, pause):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dash-port", type=int, default=8042)
-    ap.add_argument("--port", type=int, default=0, help="proxy port (default: a free one)")
+    ap.add_argument("--port", type=int, default=0, help="proxy.py port (default: a free one)")
     ap.add_argument("--fast", action="store_true", help="no pauses")
     ap.add_argument("--pause", type=float, default=1.5, help="seconds between requests (default 1.5)")
-    ap.add_argument("--log", help="pass --log to the proxy")
+    ap.add_argument("--log", help="pass --log to the dashboard")
     ap.add_argument("--once", action="store_true", help="exit after playing the session")
     args = ap.parse_args()
-    port = args.port or free_port()
+    port, relay = args.port or free_port(), free_port()
+    procs = []
     with FakeUpstream() as up:
-        cmd = [sys.executable, str(ROOT / "proxy.py"), "--port", str(port), "--upstream", up.url, "--no-print",
-               "--dash-port", str(args.dash_port)] + (["--log", args.log] if args.log else [])
-        proc = subprocess.Popen(cmd, cwd=str(ROOT))
+        # the real chain: requests -> proxy.py (unchanged) -> dashboard relay -> fake API
+        dash = [sys.executable, str(ROOT / "dashboard.py"), "--port", str(relay), "--dash-port", str(args.dash_port),
+                "--upstream", up.url] + (["--log", args.log] if args.log else [])
+        proxy = [sys.executable, str(ROOT / "proxy.py"), "--port", str(port), "--upstream", f"http://127.0.0.1:{relay}"]
         try:
+            procs.append(subprocess.Popen(dash, cwd=str(ROOT)))
             time.sleep(0.8)
-            if proc.poll() is not None:
-                sys.exit("proxy failed to start")
-            print(f"demo: open http://localhost:{args.dash_port}  (playing the session…)", flush=True)
+            procs.append(subprocess.Popen(proxy, cwd=str(ROOT), stdout=subprocess.DEVNULL))  # its dump is noisy
+            time.sleep(0.5)
+            if any(p.poll() is not None for p in procs):
+                sys.exit("demo: dashboard or proxy failed to start")
+            print(f"demo: open http://localhost:{args.dash_port}  (playing the session through proxy.py :{port}…)", flush=True)
             n = play(port, 0 if args.fast else args.pause)
             print(f"demo: sent {n} requests.", "Exiting." if args.once else "Ctrl-C to stop.", flush=True)
             if not args.once:
-                proc.wait()
+                procs[0].wait()
         except KeyboardInterrupt:
             pass
         finally:
             time.sleep(0.3)
-            proc.terminate()
-            proc.wait(5)
+            for p in procs:
+                p.terminate()
+                p.wait(5)
 
 
 if __name__ == "__main__":

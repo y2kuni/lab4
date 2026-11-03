@@ -1,13 +1,16 @@
-"""Golden forwarding test (PLAN 0.2): the proxy must pass bytes through unchanged.
+"""Golden forwarding test (PLAN 0.2): traffic must pass through unchanged.
 
-Runs against proxy.py, or the script named by $PROXY_SCRIPT.
+proxy.py itself must stay byte-identical to the original. The tests run against
+the real setup: client -> proxy.py -> dashboard relay -> fake upstream.
 """
 
 import json
 import os
 import unittest
 
-from tests.harness import ROOT, SECRET_BEARER, FakeUpstream, Proxy, call, fixture
+import subprocess
+
+from tests.harness import ROOT, SECRET_BEARER, Chain, Dash, FakeUpstream, Proxy, call, fixture
 
 SCRIPT = os.environ.get("PROXY_SCRIPT", str(ROOT / "proxy.py"))
 STREAMS = ["text_stream.sse", "tool_use_stream.sse", "thinking_stream.sse", "sse_error.sse",
@@ -15,10 +18,12 @@ STREAMS = ["text_stream.sse", "tool_use_stream.sse", "thinking_stream.sse", "sse
 
 
 class Forwarding(unittest.TestCase):
+    MODE = "front"
+
     @classmethod
     def setUpClass(cls):
         cls.up = FakeUpstream().__enter__()
-        cls.proxy = Proxy(cls.up.url, SCRIPT).__enter__()
+        cls.proxy = Chain(cls.up.url, script=SCRIPT, mode=cls.MODE).__enter__()
 
     @classmethod
     def tearDownClass(cls):
@@ -71,12 +76,25 @@ class Forwarding(unittest.TestCase):
         self.assertTrue(fixture("tool_use_stream.sse").startswith(r["body"]))
 
 
+class ForwardingBehind(Forwarding):
+    MODE = "behind"
+
+
+class Untouched(unittest.TestCase):
+    def test_proxy_py_is_the_original(self):
+        base = subprocess.run(["git", "show", "baseline:proxy.py"], cwd=ROOT, capture_output=True, check=True).stdout
+        self.assertEqual((ROOT / "proxy.py").read_bytes(), base)
+
+
 class Unreachable(unittest.TestCase):
     def test_502(self):
         from tests.harness import free_port
-        with Proxy(f"http://127.0.0.1:{free_port()}", SCRIPT) as p:
+        with Chain(f"http://127.0.0.1:{free_port()}", script=SCRIPT) as p:
             r = call(p.port, b"{}")
-            self.assertEqual(r["status"], 502)
+            self.assertEqual(r["status"], 502)   # upstream down: the 502 reaches the client
+        # the dashboard not running: proxy.py answers 502 by itself, exactly as before
+        with Proxy(f"http://127.0.0.1:{free_port()}", SCRIPT) as p:
+            self.assertEqual(call(p.port, b"{}")["status"], 502)
 
 
 if __name__ == "__main__":

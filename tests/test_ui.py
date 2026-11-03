@@ -6,7 +6,7 @@ import time
 import unittest
 
 from tests.cdp import CHROME, Browser
-from tests.harness import SECRET_MARKERS, FakeUpstream, Proxy, call, fixture
+from tests.harness import SECRET_MARKERS, Chain, Dash, FakeUpstream, call, fixture
 
 
 @unittest.skipUnless(CHROME, "needs Chrome/Chromium")
@@ -14,7 +14,7 @@ class LiveUI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.up = FakeUpstream().__enter__()
-        cls.proxy = Proxy(cls.up.url, extra=["--no-print"], dash=True).__enter__()
+        cls.proxy = Chain(cls.up.url).__enter__()
         cls.url = f"http://localhost:{cls.proxy.dash_port}/"
         cls.b = Browser().__enter__()
         cls.b.goto(cls.url)
@@ -157,7 +157,7 @@ class ManyRows(unittest.TestCase):
                           "response": {"headers": [], "size": 0}, "reply": {"stop_reason": "end_turn", "content": []},
                           "error": None, "badges": []}
                     f.write(json.dumps({"type": "exchange", "exchange": ex}) + "\n")
-            with Proxy("http://127.0.0.1:1", extra=["--load", log, "--max-exchanges", "6000"], dash=True) as p, Browser() as b:
+            with Dash(None, extra=["--load", log, "--max-exchanges", "6000"]) as p, Browser() as b:
                 b.goto(f"http://localhost:{p.dash_port}/")
                 b.wait("S.order.length === 5000")
                 self.assertLess(b.js("document.querySelectorAll('.row').length"), 60)
@@ -182,7 +182,7 @@ class DemoUI(unittest.TestCase):
     def setUpClass(cls):
         from tests.demo import play
         cls.up = FakeUpstream().__enter__()
-        cls.proxy = Proxy(cls.up.url, extra=["--no-print"], dash=True).__enter__()
+        cls.proxy = Chain(cls.up.url).__enter__()
         cls.n = play(cls.proxy.port, 0)
         # a real prompt that merely mentions a tag must still count as the human's
         body = json.loads(fixture("request_messages.json"))

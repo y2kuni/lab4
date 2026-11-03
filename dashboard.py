@@ -1,11 +1,31 @@
-"""dashboard.py: the dashboard's own HTTP server (SPEC §3, §3.2, D1).
+#!/usr/bin/env python3
+"""dashboard.py: live traffic dashboard for proxy.py. A separate program; proxy.py is not changed.
 
-It runs in the proxy's process on a separate port, bound to 127.0.0.1, so no
-dashboard path can ever clash with an API path. It only reads from the store.
+    python3 proxy.py                          # already running on :8041, left as it is
+    python3 dashboard.py                      # relay on :8040 -> proxy.py :8041, page on http://localhost:8042
+    ANTHROPIC_BASE_URL=http://localhost:8040 claude
+
+The dashboard runs a small recording relay (relay.py) in front of the running
+proxy.py. The agent talks to the relay; the relay records each exchange and
+passes it on, unchanged, to proxy.py, which forwards it to the API as always.
+proxy.py is neither changed nor restarted. The page has its own port, bound to
+127.0.0.1.
+
+    claude -> relay :8040 -> proxy.py :8041 -> api.anthropic.com
+                 |
+              page :8042
+
+Other setups through flags: `--upstream https://api.anthropic.com` (no proxy.py
+at all), or put the relay behind proxy.py with
+`python3 proxy.py --upstream http://localhost:8040`.
+
+    python3 dashboard.py --log traffic.jsonl  # also keep a session log (mode 0600)
+    python3 dashboard.py --load traffic.jsonl # open a saved session; no relay
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import queue
 import re
@@ -186,3 +206,76 @@ def start(store, port: int, config: dict | None = None) -> ThreadingHTTPServer:
     server = make_server(store, port, config)
     threading.Thread(target=server.serve_forever, name="dashboard", daemon=True).start()
     return server
+
+
+def _check_upstream(upstream: str) -> None:
+    """Say so at startup if nothing answers at the upstream (e.g. proxy.py isn't running)."""
+    import socket
+    u = urlsplit(upstream)
+    try:
+        socket.create_connection((u.hostname, u.port or (443 if u.scheme == "https" else 80)), timeout=1).close()
+    except OSError:
+        print(f"note: nothing is answering at {upstream} yet. Is proxy.py running? Requests will get a 502 until it is.",
+              flush=True)
+
+
+def main() -> None:
+    from datetime import datetime
+
+    from recorder import Recorder
+    from relay import make_relay_handler
+    from store import Store
+    from threads import Threads
+
+    ap = argparse.ArgumentParser(description="Live traffic dashboard for proxy.py (runs beside it; proxy.py is unchanged).")
+    ap.add_argument("--port", type=int, default=8040, help="relay port the agent talks to (default 8040)")
+    ap.add_argument("--dash-port", type=int, default=8042, help="dashboard page port (default 8042)")
+    ap.add_argument("--upstream", default="http://localhost:8041",
+                    help="where the relay forwards (default: the running proxy.py on http://localhost:8041)")
+    ap.add_argument("--log", metavar="PATH", help="append finished exchanges to a JSONL session log (mode 0600)")
+    ap.add_argument("--load", metavar="PATH", help="open a recorded session log; no relay is started")
+    ap.add_argument("--max-exchanges", type=int, default=2000, help="exchanges kept in memory (default 2000)")
+    ap.add_argument("--harness-patterns", metavar="PATH",
+                    help="JSON rules for spotting harness-injected text (default: ./harness_patterns.json if present)")
+    args = ap.parse_args()
+    upstream = args.upstream.rstrip("/")
+    ui = ui_config(args.harness_patterns)
+    ui["session"] = args.load or datetime.now().isoformat(timespec="seconds")
+
+    if args.load:
+        store = Store(max_exchanges=args.max_exchanges)
+        n = store.load(args.load)
+        Threads(store, ui["harness_rules"]).rebuild()
+        print(f"loaded {n} exchanges, {len(store.blobs)} unique blocks from {args.load}", flush=True)
+        page = make_server(store, args.dash_port, dict(ui, mode="load", source=args.load))
+        print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
+        try:
+            page.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        return
+
+    if args.log:
+        print(f"WARNING: logging to {args.log} (mode 0600). It holds full prompts, file contents and tool output; "
+              "credentials are redacted.", flush=True)
+    store = Store(max_exchanges=args.max_exchanges, log_path=args.log)
+    Threads(store, ui["harness_rules"])
+    rec = Recorder(store)
+    relay = ThreadingHTTPServer(("127.0.0.1", args.port), make_relay_handler(upstream, rec))  # C3: loopback only
+    relay.daemon_threads = True
+    start(store, args.dash_port, dict(ui, mode="live", upstream=upstream))
+    print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
+    print(f"relay listening on http://localhost:{args.port}  ->  {upstream}", flush=True)
+    print(f"run the agent with:  ANTHROPIC_BASE_URL=http://localhost:{args.port} claude", flush=True)
+    _check_upstream(upstream)
+    try:
+        relay.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        rec.flush()
+        store.close()
+
+
+if __name__ == "__main__":
+    main()

@@ -157,41 +157,30 @@ class FakeUpstream:
         self.server.server_close()
 
 
-class Proxy:
-    """Runs a proxy script as a subprocess on free ports."""
+class _Proc:
+    """A Python script run as a subprocess; waits until its ports accept connections."""
 
-    def __init__(self, upstream: str, script: Path | str = ROOT / "proxy.py", extra: list[str] | None = None,
-                 dash: bool = False):
-        self.port = free_port()
-        self.dash_port = free_port() if dash else None
-        self.script = str(script)
-        self.args = [sys.executable, "-u", self.script, "--port", str(self.port), "--upstream", upstream]
-        if dash:
-            self.args += ["--dash-port", str(self.dash_port)]
-        elif "baseline" not in Path(self.script).name:
-            self.args += ["--no-dash"]
-        self.args += extra or []
-        self.out_path = None
+    def __init__(self, args: list[str], wait_ports: list[int], name: str):
+        self.args, self.wait_ports, self.name = [sys.executable, "-u"] + args, wait_ports, name
 
     def __enter__(self):
         import tempfile
-        self.out = tempfile.NamedTemporaryFile("w+b", prefix="proxy-out-", delete=False)
+        self.out = tempfile.NamedTemporaryFile("w+b", prefix=f"{self.name}-out-", delete=False)
         self.out_path = self.out.name
         self.proc = subprocess.Popen(self.args, stdout=self.out, stderr=subprocess.STDOUT, cwd=str(ROOT))
-        ports = ([] if "--load" in self.args else [self.port]) + ([self.dash_port] if self.dash_port else [])
         deadline = time.time() + 10
-        for p in ports:
+        for p in self.wait_ports:
             while True:
                 if self.proc.poll() is not None:
                     self.__exit__(None, None, None)
-                    raise RuntimeError(f"proxy exited early:\n{self.last_output}")
+                    raise RuntimeError(f"{self.name} exited early:\n{self.last_output}")
                 try:
                     socket.create_connection(("127.0.0.1", p), timeout=0.2).close()
                     break
                 except OSError:
                     if time.time() > deadline:
                         self.__exit__(None, None, None)
-                        raise RuntimeError(f"proxy did not start:\n{self.last_output}")
+                        raise RuntimeError(f"{self.name} did not start:\n{self.last_output}")
                     time.sleep(0.05)
         return self
 
@@ -211,6 +200,73 @@ class Proxy:
             self.proc.kill()
         self.out.close()
         os.unlink(self.out_path)
+
+
+class Proxy(_Proc):
+    """proxy.py (or another script with the same flags) on a free port."""
+
+    def __init__(self, upstream: str, script: Path | str = ROOT / "proxy.py"):
+        self.port = free_port()
+        super().__init__([str(script), "--port", str(self.port), "--upstream", upstream], [self.port], "proxy")
+
+
+class Dash(_Proc):
+    """dashboard.py: recording relay (.port) + page (.dash_port). With --load there is no relay."""
+
+    def __init__(self, upstream: str | None, extra: list[str] | None = None):
+        self.port, self.dash_port = free_port(), free_port()
+        extra = extra or []
+        args = [str(ROOT / "dashboard.py"), "--port", str(self.port), "--dash-port", str(self.dash_port)]
+        if upstream:
+            args += ["--upstream", upstream]
+        loading = "--load" in extra
+        super().__init__(args + extra, ([] if loading else [self.port]) + [self.dash_port], "dashboard")
+        self.relay_url = f"http://127.0.0.1:{self.port}"
+
+
+class Chain:
+    """The real setup, with the unchanged proxy.py.
+
+    front (default): client -> dashboard relay -> proxy.py -> upstream   (proxy.py already running)
+    behind:          client -> proxy.py --upstream relay -> dashboard relay -> upstream
+
+    .port is where the agent connects, .dash_port the page, .relay_port the relay.
+    output() is the dashboard's output; proxy_output() is proxy.py's own terminal dump.
+    """
+
+    def __init__(self, upstream: str, extra: list[str] | None = None, script: Path | str = ROOT / "proxy.py",
+                 mode: str = "front"):
+        self.upstream, self.extra, self.script, self.mode = upstream, extra, script, mode
+
+    def __enter__(self):
+        if self.mode == "front":
+            self.proxy = Proxy(self.upstream, self.script).__enter__()
+            try:
+                self.dash = Dash(f"http://127.0.0.1:{self.proxy.port}", self.extra).__enter__()
+            except BaseException:
+                self.proxy.__exit__(None, None, None)
+                raise
+            self.port = self.dash.port
+        else:
+            self.dash = Dash(self.upstream, self.extra).__enter__()
+            try:
+                self.proxy = Proxy(self.dash.relay_url, self.script).__enter__()
+            except BaseException:
+                self.dash.__exit__(None, None, None)
+                raise
+            self.port = self.proxy.port
+        self.dash_port, self.relay_port = self.dash.dash_port, self.dash.port
+        return self
+
+    def output(self) -> str:
+        return self.dash.output()
+
+    def proxy_output(self) -> str:
+        return self.proxy.output()
+
+    def __exit__(self, *exc):
+        self.proxy.__exit__(*exc)
+        self.dash.__exit__(*exc)
 
 
 def call(port: int, body: bytes = b"{}", headers: dict | None = None, path: str = "/v1/messages",

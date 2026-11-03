@@ -7,7 +7,7 @@ import threading
 import time
 import unittest
 
-from tests.harness import SECRET_MARKERS, FakeUpstream, Proxy, call, fixture
+from tests.harness import SECRET_MARKERS, Chain, Dash, FakeUpstream, call, fixture
 
 
 def get(port, path, headers=None):
@@ -76,7 +76,7 @@ class Dashboard(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.up = FakeUpstream().__enter__()
-        cls.proxy = Proxy(cls.up.url, extra=["--no-print"], dash=True).__enter__()
+        cls.proxy = Chain(cls.up.url).__enter__()
         cls.d = cls.proxy.dash_port
 
     @classmethod
@@ -198,10 +198,10 @@ class Load(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             log = os.path.join(d, "t.jsonl")
-            with FakeUpstream() as up, Proxy(up.url, extra=["--log", log, "--no-print"]) as p:
+            with FakeUpstream() as up, Chain(up.url, extra=["--log", log]) as p:
                 call(p.port, fixture("request_messages.json"), {"x-fixture": "thinking_stream.sse"})
                 time.sleep(0.3)
-            lp = Proxy("http://127.0.0.1:1", extra=["--load", log], dash=True)
+            lp = Dash(None, extra=["--load", log])
             with lp:
                 data = jget(lp.dash_port, "/api/exchanges")
                 self.assertEqual(len(data["exchanges"]), 1)

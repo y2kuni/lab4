@@ -6,7 +6,7 @@ import unittest
 from dashboard import DEFAULT_HARNESS_RULES
 from recorder import Recorder
 from store import Store
-from tests.harness import FakeUpstream, Proxy
+from tests.harness import Chain, Dash, FakeUpstream
 from threads import Threads
 
 
@@ -133,7 +133,7 @@ class DemoThreads(unittest.TestCase):
         from tests.harness import call  # noqa: F401
         with tempfile.TemporaryDirectory() as d:
             log = os.path.join(d, "t.jsonl")
-            with FakeUpstream() as up, Proxy(up.url, extra=["--no-print", "--log", log], dash=True) as p:
+            with FakeUpstream() as up, Chain(up.url, extra=["--log", log]) as p:
                 play(p.port, 0)
                 time.sleep(0.3)
                 from tests.test_dashboard import jget
@@ -147,7 +147,7 @@ class DemoThreads(unittest.TestCase):
             self.assertIn("history rewritten", by_id[17]["badges"])
             self.assertIn("retry", by_id[6]["badges"])
             self.assertEqual(by_id[4]["trigger"]["tools"][0]["name"], "Bash")
-            with Proxy("http://127.0.0.1:1", extra=["--load", log], dash=True) as lp:
+            with Dash(None, extra=["--load", log]) as lp:
                 loaded = jget(lp.dash_port, "/api/exchanges")
             self.assertEqual(loaded["threads"], live["threads"])
             self.assertEqual([e["trigger"] for e in loaded["exchanges"]], [e["trigger"] for e in live["exchanges"]])

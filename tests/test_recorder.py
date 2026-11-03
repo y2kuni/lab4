@@ -10,8 +10,8 @@ import unittest
 
 from recorder import Recorder, SSEParser, classify, redact_headers
 from store import Store
-from tests.harness import (SECRET_BEARER, SECRET_COOKIE, SECRET_KEY, SECRET_MARKERS, SECRET_TOKEN, FakeUpstream,
-                           Proxy, call, fixture)
+from tests.harness import (SECRET_BEARER, SECRET_COOKIE, SECRET_KEY, SECRET_MARKERS, SECRET_TOKEN, Chain, FakeUpstream,
+                           call, fixture)
 
 
 def assert_no_secrets(tc, text: str):
@@ -222,7 +222,7 @@ class LogRoundTrip(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             log = os.path.join(d, "traffic.jsonl")
             body = fixture("request_messages.json")
-            with FakeUpstream() as up, Proxy(up.url, extra=["--log", log, "--no-print"]) as p:
+            with FakeUpstream() as up, Chain(up.url, extra=["--log", log]) as p:
                 for name in ("text_stream.sse", "tool_use_stream.sse", "thinking_stream.sse"):
                     call(p.port, body, {"x-fixture": name})
                 call(p.port, b"{}", {"x-fixture": "error_529.json", "x-status": "529"})
@@ -232,7 +232,7 @@ class LogRoundTrip(unittest.TestCase):
             with open(log, encoding="utf-8") as f:
                 text = f.read()
             assert_no_secrets(self, text)
-            assert_no_secrets(self, out)  # --no-print: nothing dumped either
+            assert_no_secrets(self, out)  # the dashboard prints no traffic
             self.assertIn("WARNING", out)
             lines = [json.loads(line) for line in text.splitlines()]
             self.assertEqual(sum(1 for r in lines if r["type"] == "exchange"), 4)
