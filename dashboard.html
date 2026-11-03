@@ -127,6 +127,81 @@ table.hdrs td:first-child { color: var(--muted); white-space: nowrap; width: 1%;
 .k-err { --k: var(--err); --kb: var(--err-bg); }
 .k-sys { --k: var(--sys); --kb: var(--sys-bg); }
 
+.blk > .bh .sp, .mh .sp { flex: 1; }
+.blk > .bh .sz { color: var(--faint); font-size: 11px; white-space: nowrap; }
+.blk > .bh { flex-wrap: wrap; }
+.blk.k-other { --k: var(--muted); }
+.blk .tid { color: var(--faint); font-size: 11px; }
+details.thinking > summary { cursor: pointer; list-style: none; }
+details.thinking > summary::-webkit-details-marker { display: none; }
+details.thinking:not([open]) > summary::after { content: "▸ show"; color: var(--faint); font-size: 11px; }
+pre.txt { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12px; }
+pre.txt.cmd { background: var(--panel-2); border-radius: 4px; padding: 4px 8px; margin-bottom: 6px; }
+.clip { position: relative; }
+.clipped { position: relative; max-height: 19em; overflow: hidden; }
+.clipped::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3em; background: linear-gradient(transparent, var(--kb, var(--panel))); pointer-events: none; }
+button.more { margin-top: 4px; font-size: 11px; padding: 1px 8px; background: var(--panel); }
+button.more.inline { margin: 0 0 0 6px; }
+.ln { font-family: var(--mono); font-size: 12px; }
+.lnr { display: flex; white-space: pre; }
+.lnr .g { color: var(--faint); min-width: 3.5em; text-align: right; padding-right: 10px; user-select: none; flex: none; }
+.diff .da { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.diff .dd { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+.diff .dh { color: var(--accent); }
+.md { overflow-wrap: anywhere; }
+.md p { margin: 0 0 8px; white-space: pre-wrap; }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 22px; }
+.md code { background: color-mix(in srgb, var(--text) 8%, transparent); padding: 0 4px; border-radius: 3px; }
+.md .fence { position: relative; margin: 0 0 8px; }
+.md .fence .lang { position: absolute; right: 8px; top: 4px; font-size: 10px; color: var(--faint); }
+.md .fence pre.code { max-height: none; }
+.md blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 3px solid var(--border); color: var(--muted); }
+.md .mdh { font-weight: 600; margin: 8px 0 4px; }
+.md .mdh1 { font-size: 16px; } .md .mdh2 { font-size: 15px; } .md .mdh3 { font-size: 14px; }
+.md a { color: var(--accent); }
+.md hr { border: 0; border-top: 1px solid var(--border); }
+.jv { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; overflow-x: auto; position: relative; }
+.jvbar { position: absolute; right: 6px; top: 4px; }
+.jt > summary { cursor: pointer; list-style: none; }
+.jt > summary::-webkit-details-marker { display: none; }
+.jt > summary::before { content: "▸ "; color: var(--faint); }
+.jt[open] > summary::before { content: "▾ "; }
+.sec > h3 .sz, .sec > h3 .chip { text-transform: none; letter-spacing: 0; }
+.jc { padding-left: 16px; border-left: 1px dotted var(--border); margin-left: 4px; }
+.jr { white-space: pre-wrap; word-break: break-word; }
+.jk { color: var(--muted); }
+.js { color: var(--result); } .jn { color: var(--call); } .jb { color: var(--model); } .jnull { color: var(--faint); }
+.jp { color: var(--faint); }
+.jnote { color: var(--faint); font-style: italic; margin-right: 6px; }
+img.thumb { max-width: 220px; max-height: 160px; border: 1px solid var(--border); border-radius: 4px; cursor: zoom-in; display: block; }
+img.thumb.big { max-width: 100%; max-height: none; cursor: zoom-out; }
+.pair { margin: 0 8px 8px 22px; }
+.pair:empty { display: none; }
+.pair .blk { margin: 0; }
+.awaiting { color: var(--warn); font-size: 12px; padding: 2px 0; }
+.ptr { font-size: 12px; color: var(--k); padding: 3px 10px; border-left: 3px solid var(--k); margin: 4px 0; opacity: .8; }
+.msg { margin: 10px 0 14px; }
+.mh { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 2px; }
+.role { font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .05em; }
+.role.r-user { color: var(--you); } .role.r-assistant { color: var(--model); }
+.earlier { display: flex; gap: 8px; margin: 6px 0 10px; }
+.earlier button { flex: 0 0 auto; }
+.replyhead { display: flex; gap: 8px; align-items: center; margin: 18px 0 4px; padding-top: 10px; border-top: 2px solid var(--border); font-weight: 600; }
+.usage { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin: 6px 0; }
+.usage b { color: var(--text); font-weight: 600; }
+a.chip.link { color: var(--accent); text-decoration: none; cursor: pointer; }
+a.chip.link:hover { border-color: var(--accent); }
+input.search { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; margin-bottom: 8px; }
+.tools details.tool { border: 1px solid var(--border); border-radius: 6px; margin: 4px 0; background: var(--panel); }
+.tools summary { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; cursor: pointer; flex-wrap: wrap; }
+.tools .tname { font-weight: 600; }
+.tools .tdesc { color: var(--muted); flex: 1; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools .tparams { display: flex; gap: 4px; flex-wrap: wrap; }
+.tools .chip.req { color: var(--text); font-weight: 600; }
+.tools .tbody { padding: 0 10px 8px; }
+.errh { font-size: 11px; margin-top: 6px; color: var(--muted); }
+.errbox { margin-bottom: 8px; }
+
 @media (max-width: 900px) {
   #main { grid-template-columns: 1fr; }
   #right { display: none; }
@@ -216,7 +291,8 @@ const S = {
   live: new Map(),      // id -> reply being built from exchange.delta notes
   seq: 0,
   follow: true, paused: false, buffer: [],
-  tab: "overview",
+  tab: "conversation",
+  toolQuery: "",
   config: {},
   newCount: 0,
 };
@@ -390,66 +466,475 @@ function move(delta) {
   if (top < tl.scrollTop) tl.scrollTop = top; else if (top + h > tl.scrollTop + tl.clientHeight) tl.scrollTop = top + h - tl.clientHeight;
 }
 
+// ---------- blobs (fetched lazily, cached; SPEC §3.1) ----------
+const blobCache = new Map();
+function blob(h) {
+  if (!blobCache.has(h)) blobCache.set(h, getJSON("/api/blob/" + h).then(b => b.data).catch(e => { blobCache.delete(h); throw e; }));
+  return blobCache.get(h);
+}
+const blobs = hs => Promise.all((hs || []).map(blob));
+
+// ---------- harness detection (SPEC §5.2, D2) ----------
+let harnessRules = [];
+function compileRules() {
+  harnessRules = (S.config.harness_rules || []).map(r => { try { return { name: r.name, re: new RegExp(r.pattern) }; } catch (e) { return null; } }).filter(Boolean);
+}
+function harnessRule(text) { for (const r of harnessRules) if (r.re.test(text)) return r; return null; }
+
+// ---------- formatting (SPEC §5.8) ----------
+const contentOf = m => typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : [];
+function textOfResult(b) {
+  if (typeof b.content === "string") return b.content;
+  if (Array.isArray(b.content)) return b.content.filter(x => x.type === "text").map(x => x.text).join("\n");
+  return "";
+}
+function sizeInfo(text) {
+  const lines = text ? text.split("\n").length : 0;
+  return `${lines} line${lines === 1 ? "" : "s"} · ${fmtN(text.length)} chars · ~${fmtN(Math.ceil(text.length / 4))} tok`;
+}
+const expanded = new Map();   // block key -> shown in full (kept while you navigate)
+function collapsible(text, key, render) {
+  const lines = text.split("\n");
+  if (lines.length <= 12 && text.length <= 1500) return render(text);
+  const wrap = el("div", { class: "clip" });
+  const draw = () => {
+    const open = !!expanded.get(key);
+    wrap.replaceChildren(open ? render(text) : el("div", { class: "clipped" }, render(lines.slice(0, 12).join("\n").slice(0, 1500))),
+      el("button", { class: "more", onclick: e => { e.stopPropagation(); expanded.set(key, !open); draw(); } },
+        open ? "show less" : `show all (${lines.length} lines)`));
+  };
+  draw();
+  return wrap;
+}
+const prePlain = text => el("pre", { class: "txt" }, text);
+function toolText(text) {
+  const lines = text.split("\n");
+  const numbered = lines.filter(l => /^\s*\d+(\t|→)/.test(l)).length;
+  if (lines.length >= 2 && numbered >= lines.length * 0.6) {   // `cat -n` / file read: line-number gutter
+    return el("div", { class: "ln scrollx" }, lines.map(l => {
+      const m = l.match(/^\s*(\d+)(?:\t|→)(.*)$/);
+      return el("div", { class: "lnr" }, el("span", { class: "g" }, m ? m[1] : ""), el("span", null, m ? m[2] : l));
+    }));
+  }
+  if (/^(@@ |\+\+\+ |--- )/m.test(text)) {                       // diff colouring
+    return el("pre", { class: "txt mono diff" }, lines.map((l, i) => el("span", {
+      class: /^(\+\+\+|---)/.test(l) ? "dh" : l.startsWith("+") ? "da" : l.startsWith("-") ? "dd" : l.startsWith("@@") ? "dh" : ""
+    }, l + (i < lines.length - 1 ? "\n" : ""))));
+  }
+  return el("pre", { class: "txt mono" }, text);
+}
+
+// Safe markdown (C5): builds DOM nodes directly; nothing is parsed as HTML. Links: http(s) only.
+const MD_BLOCK = /^\s*(```|~~~|#{1,6}\s|[-*+]\s|\d+[.)]\s|>|(---|\*\*\*|___)\s*$)/;
+function markdown(src) {
+  const root = el("div", { class: "md" });
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fence = line.match(/^\s*(```+|~~~+)\s*([\w+#.-]*)/);
+    if (fence) {
+      const buf = []; i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) buf.push(lines[i++]);
+      i++;
+      root.append(el("div", { class: "fence" }, fence[2] ? el("span", { class: "lang" }, fence[2]) : null, el("pre", { class: "code" }, buf.join("\n"))));
+      continue;
+    }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { root.append(el("div", { class: "mdh mdh" + h[1].length }, inline(h[2]))); i++; continue; }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
+      const ordered = /^\s*\d/.test(line), list = el(ordered ? "ol" : "ul");
+      while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) list.append(el("li", null, inline(lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ""))));
+      root.append(list); continue;
+    }
+    if (/^\s*>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+      root.append(el("blockquote", null, markdown(buf.join("\n")))); continue;
+    }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { root.append(el("hr")); i++; continue; }
+    if (!line.trim()) { i++; continue; }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !MD_BLOCK.test(lines[i])) buf.push(lines[i++]);
+    if (!buf.length) buf.push(lines[i++]);
+    root.append(el("p", null, inline(buf.join("\n"))));
+  }
+  return root;
+}
+function inline(text) {
+  const out = [], re = /(`+)([\s\S]*?)\1|\*\*([^*]+)\*\*|__([^_]+)__|(?<![\w*])\*([^*\s][^*]*?)\*(?!\w)|\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m[1]) out.push(el("code", null, m[2]));
+    else if (m[3] || m[4]) out.push(el("strong", null, m[3] || m[4]));
+    else if (m[5]) out.push(el("em", null, m[5]));
+    else if (m[6]) out.push(/^https?:\/\//i.test(m[7]) ? el("a", { href: m[7], target: "_blank", rel: "noopener noreferrer nofollow" }, m[6]) : m[0]);
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+// JSON tree: opens two levels deep, long strings truncated, JSON-in-a-string parsed.
+function jsonView(value) {
+  return el("div", { class: "jv" }, el("div", { class: "jvbar" }, copyBtn(() => JSON.stringify(value, null, 2))), jsonNode(value, 0, null));
+}
+function jsonNode(v, depth, key) {
+  const k = key === null ? null : el("span", { class: "jk" }, typeof key === "number" ? key : JSON.stringify(key), ": ");
+  if (v !== null && typeof v === "object") {
+    const entries = Array.isArray(v) ? v.map((x, i) => [i, x]) : Object.entries(v);
+    if (!entries.length) return el("div", { class: "jr" }, k, el("span", { class: "jp" }, Array.isArray(v) ? "[]" : "{}"));
+    return el("details", { class: "jt", open: depth < 2 },
+      el("summary", null, k, el("span", { class: "jp" }, Array.isArray(v) ? `[ ${entries.length} ]` : `{ ${entries.length} }`)),
+      el("div", { class: "jc" }, entries.map(([ck, cv]) => jsonNode(cv, depth + 1, ck))));
+  }
+  if (typeof v === "string") {
+    const t = v.trim();
+    if ((t.startsWith("{") || t.startsWith("[")) && t.length > 2) {
+      try { const parsed = JSON.parse(t); if (parsed && typeof parsed === "object") return el("div", { class: "jr" }, el("span", { class: "jnote" }, "(JSON string)"), jsonNode(parsed, depth, key)); } catch (e) {}
+    }
+  }
+  return el("div", { class: "jr" }, k, jsonLeaf(v));
+}
+function jsonLeaf(v) {
+  if (typeof v === "string") {
+    const cls = "js";
+    if (v.length <= 200) return el("span", { class: cls }, JSON.stringify(v));
+    const span = el("span", { class: cls });
+    const short = () => span.replaceChildren(JSON.stringify(v.slice(0, 200)).slice(0, -1) + "…", el("button", { class: "more inline", onclick: e => { e.stopPropagation(); full(); } }, `+${fmtN(v.length - 200)} chars`));
+    const full = () => span.replaceChildren(JSON.stringify(v), el("button", { class: "more inline", onclick: e => { e.stopPropagation(); short(); } }, "less"));
+    short();
+    return span;
+  }
+  return el("span", { class: v === null ? "jnull" : typeof v === "number" ? "jn" : "jb" }, String(v));
+}
+
+function imageBlock(b) {
+  const src = b.source || {};
+  if (src.type === "base64" && /^image\/(png|jpeg|gif|webp)$/.test(src.media_type || "")) {
+    const url = `data:${src.media_type};base64,${src.data}`;
+    const img = el("img", { class: "thumb", src: url, alt: "image", title: "click to open full size" });
+    img.addEventListener("click", () => img.classList.toggle("big"));
+    return el("div", null, img, el("div", { class: "muted" }, `${src.media_type} · ${fmtN(Math.round((src.data || "").length * 3 / 4))} bytes`));
+  }
+  return el("div", { class: "muted" }, `image (${src.type || "?"}) ${src.url || ""}`);
+}
+
+// ---------- message blocks: one look per kind (SPEC §5.2) ----------
+function blockShell(kind, label, opts, body) {
+  const raw = opts.raw;
+  const bodyBox = el("div", { class: "bb" });
+  let showingRaw = false;
+  const draw = () => bodyBox.replaceChildren(showingRaw ? jsonView(raw) : body());
+  const head = el("div", { class: "bh" },
+    el("span", { class: "lbl", title: opts.title || null }, label),
+    opts.extra || null,
+    el("span", { class: "sp" }),
+    opts.size ? el("span", { class: "sz" }, opts.size) : null,
+    opts.copy ? copyBtn(opts.copy) : null,
+    raw !== undefined ? el("button", { class: "copy", title: "show the block's raw JSON", onclick: e => { e.stopPropagation(); showingRaw = !showingRaw; e.currentTarget.classList.toggle("on", showingRaw); draw(); } }, "raw") : null);
+  draw();
+  return el("div", { class: `blk k-${kind}` + (opts.cls ? " " + opts.cls : "") }, head, bodyBox, opts.after || null);
+}
+
+function renderBlock(b, ctx, key) {
+  const t = b.type;
+  if (t === "text") {
+    const text = b.text || "";
+    if (ctx.role === "user") {
+      const rule = harnessRule(text);
+      if (rule) return blockShell("harness", "⚙ Harness", { raw: b, size: sizeInfo(text), copy: () => text, title: `Marked as harness by the rule "${rule.name}". Text that matches no rule is shown as You.` },
+        () => collapsible(text, key, prePlain));
+      return blockShell("you", "👤 You", { raw: b, size: sizeInfo(text), copy: () => text, title: "Text in a user message that matches no harness rule" }, () => collapsible(text, key, prePlain));
+    }
+    let md = true;
+    const box = el("div");
+    const draw = () => box.replaceChildren(collapsible(text, key + (md ? ":md" : ":raw"), md ? markdown : prePlain));
+    draw();
+    const toggle = el("button", { class: "copy", title: "rendered markdown / plain text", onclick: e => { e.stopPropagation(); md = !md; e.currentTarget.textContent = md ? "md" : "plain"; draw(); } }, "md");
+    return blockShell("model", "◆ Model", { raw: b, size: sizeInfo(text), copy: () => text, extra: toggle }, () => box);
+  }
+  if (t === "thinking" || t === "redacted_thinking") {
+    const text = t === "thinking" ? (b.thinking || "") : "(redacted thinking)";
+    return el("details", { class: "blk k-think thinking" },
+      el("summary", { class: "bh" }, el("span", { class: "lbl" }, "💭 Thinking"), el("span", { class: "sp" }), el("span", { class: "sz" }, sizeInfo(text))),
+      el("div", { class: "bb" }, collapsible(text, key, prePlain)));
+  }
+  if (t === "tool_use" || t === "server_tool_use" || t === "mcp_tool_use") {
+    const receiving = "_partial" in b;
+    const inputBody = () => receiving ? el("pre", { class: "txt mono" }, b._partial || "")
+      : b.input_raw != null ? el("div", null, el("div", { class: "chip err" }, b.input_error || "invalid JSON"), el("pre", { class: "txt mono" }, b.input_raw))
+      : inputView(b.name, b.input);
+    return blockShell("call", `⟳ Tool call · ${b.name || "?"}`, {
+      raw: receiving ? undefined : b, copy: () => JSON.stringify(b.input, null, 2),
+      extra: receiving ? el("span", { class: "chip" }, el("span", { class: "spin" }), " receiving…") : el("span", { class: "tid mono" }, b.id || ""),
+      after: ctx.pairs === false ? null : pairedResult(b, ctx, key),
+    }, inputBody);
+  }
+  if (t === "tool_result") return resultBlock(b, ctx, key);
+  if (t === "image") return blockShell("you", ctx.role === "user" ? "👤 Image" : "Image", { raw: undefined }, () => imageBlock(b));
+  return blockShell("other", t || "block", { raw: b }, () => jsonView(b));
+}
+
+// Tool inputs: a short one-line summary for common tools, then the JSON tree.
+function inputView(name, input) {
+  if (input && typeof input === "object") {
+    const line = input.command || input.file_path || input.pattern || input.url || input.query || input.description || null;
+    return el("div", null, typeof line === "string" ? el("pre", { class: "txt mono cmd" }, line) : null, jsonView(input));
+  }
+  return jsonView(input);
+}
+
+function resultBlock(b, ctx, key) {
+  const name = ctx.names.get(b.tool_use_id) || "?";
+  const text = textOfResult(b);
+  const isErr = !!b.is_error;
+  const body = () => {
+    const parts = [];
+    if (Array.isArray(b.content)) {
+      for (const [i, c] of b.content.entries()) {
+        if (c.type === "text") parts.push(collapsible(c.text || "", key + ":" + i, toolText));
+        else if (c.type === "image") parts.push(imageBlock(c));
+        else parts.push(jsonView(c));
+      }
+    } else parts.push(collapsible(text, key, toolText));
+    if (!parts.length) parts.push(el("div", { class: "muted" }, "(empty result)"));
+    return el("div", null, parts);
+  };
+  const arrived = ctx.arrivedIn && ctx.arrivedIn.get(b.tool_use_id);
+  return blockShell(isErr ? "err" : "result", `${isErr ? "✗" : "◧"} Result · ${name}${isErr ? " · error" : ""}`, {
+    raw: b, size: sizeInfo(text), copy: () => text,
+    extra: arrived ? exLink(arrived, "arrived in") : null,
+  }, body);
+}
+
+function exLink(id, prefix) {
+  if (id == null) return null;
+  if (id === S.selected) return el("span", { class: "chip" }, `${prefix} this request`);
+  return el("a", { class: "chip link", href: "#", onclick: e => { e.preventDefault(); e.stopPropagation(); select(id, true); } }, `${prefix} #${id}`);
+}
+
+// Under each tool call: its result, paired by tool_use.id / tool_use_id (SPEC §5.4.2).
+function pairedResult(call, ctx, key) {
+  const local = ctx.results.get(call.id);
+  const link = ctx.links[call.id] || {};
+  const box = el("div", { class: "pair" });
+  if (local) {
+    box.append(resultBlock(local.block, Object.assign({}, ctx, { arrivedIn: new Map([[call.id, link.result_ex ?? S.selected]]) }), key + ":r"));
+  } else if (link.result_ex != null) {
+    box.append(el("div", { class: "muted" }, "Loading result…"));
+    blob(link.result_msg).then(m => {
+      const r = contentOf(m).find(x => x.type === "tool_result" && x.tool_use_id === call.id);
+      box.replaceChildren(r ? resultBlock(r, Object.assign({}, ctx, { arrivedIn: new Map([[call.id, link.result_ex]]) }), key + ":r") : el("div", { class: "muted" }, "result not found"));
+    }).catch(() => box.replaceChildren(exLink(link.result_ex, "result arrived in")));
+  } else if (ctx.awaiting !== false) {
+    box.append(el("div", { class: "awaiting" }, "⧗ awaiting result"));
+  }
+  return box;
+}
+
 // ---------- detail (SPEC §5.4) ----------
 const TABS = [
-  { id: "overview", label: "Overview", render: renderOverview },
-  { id: "raw", label: "Raw", render: renderRaw },
+  { id: "conversation", label: () => "Conversation", render: renderConversation },
+  { id: "system", label: f => `System${f && f.request.system ? " " + f.request.system.length : ""}`, render: renderSystem },
+  { id: "tools", label: f => `Tools${f && f.request.tools ? " " + f.request.tools.length : ""}`, render: renderTools },
+  { id: "reply", label: () => "Reply", render: renderReplyTab },
+  { id: "params", label: () => "Request", render: renderParams },
+  { id: "raw", label: () => "Raw", render: renderRaw },
 ];
+S.tab = "conversation";
 let detailToken = 0;
 async function renderDetail() {
   const id = S.selected, box = $("#detail"), token = ++detailToken;
   if (id == null) { box.replaceChildren(el("div", { class: "placeholder" }, "Select an exchange on the left.")); return; }
   const s = S.ex.get(id); if (!s) return;
   let full = S.full.get(id);
-  if (!full && s.state !== "streaming" && s.state !== "pending") {
-    try { full = await getJSON("/api/exchanges/" + id); S.full.set(id, full); } catch (e) { full = null; }
+  if (!full) {
+    try { full = await getJSON("/api/exchanges/" + id); if (s.state !== "streaming" && s.state !== "pending") S.full.set(id, full); } catch (e) { full = null; }
     if (token !== detailToken) return;
   }
+  const scrollY = $("#right").scrollTop, sameEx = box.dataset.ex === String(id);
+  const isMsg = s.kind !== "other";
+  const tabs = isMsg ? TABS : TABS.filter(t => t.id === "params" || t.id === "raw");
+  const tab = tabs.find(t => t.id === S.tab) || (isMsg ? tabs[0] : tabs.find(t => t.id === "params"));
   const head = el("div", { class: "dhead" },
-    el("button", { id: "back", onclick: () => document.body.classList.remove("detail-open") }, "← Back"),
+    el("button", { id: "back", onclick: () => { document.body.classList.remove("detail-open"); scheduleTimeline(); } }, "← Back"),
     el("h2", null, `Exchange #${id}`),
     el("span", { class: "meta" }, [s.thread, s.model, s.status, fmtMs(s.t && s.t.total_ms)].filter(Boolean).join(" · ")),
-    s.state === "streaming" ? el("span", { class: "spin" }) : null);
-  const tabs = el("div", { class: "tabs" }, TABS.map(t => el("button", { class: S.tab === t.id ? "on" : "", onclick: () => { S.tab = t.id; renderDetail(); } }, t.label)));
+    s.state === "streaming" || s.state === "pending" ? el("span", { class: "spin" }) : null,
+    ...(s.badges || []).map(b => el("span", { class: "chip warn" }, b)));
+  const tabBar = el("div", { class: "tabs" }, tabs.map(t => el("button", { class: tab.id === t.id ? "on" : "", onclick: () => { S.tab = t.id; renderDetail(); } }, t.label(full))));
   const body = el("div", { id: "tabbody" });
-  box.replaceChildren(head, tabs, body);
-  const tab = TABS.find(t => t.id === S.tab) || TABS[0];
+  const err = s.error ? el("div", { class: "errbox" }, el("b", null, "✗ Error  "), s.error, errorExtras(full)) : null;
+  box.dataset.ex = id;
+  box.replaceChildren(head, err || "", tabBar, body);
+  if (!full) { body.append(el("div", { class: "muted" }, "Could not load this exchange.")); return; }
   await tab.render(s, full, body, token);
+  if (sameEx) $("#right").scrollTop = scrollY;
+}
+function errorExtras(full) {
+  if (!full || !full.response) return null;
+  const pick = (full.response.headers || []).filter(([k]) => /^(retry-after|anthropic-ratelimit-|x-should-retry|request-id)/i.test(k));
+  return pick.length ? el("div", { class: "mono errh" }, pick.map(([k, v]) => el("div", null, `${k}: ${v}`))) : null;
 }
 
-function renderOverview(s, full, body) {
-  if (s.error) body.append(el("div", { class: "errbox" }, el("b", null, "✗ Error  "), s.error));
-  const req = full ? full.request : null;
-  const kv = [["path", `${s.method} ${s.path}`], ["kind", s.kind], ["status", s.status ?? "…"], ["state", s.state],
-    ["started", s.t ? absTime(s.t.start) : "–"], ["connect / first byte / total", `${fmtMs(s.t.connected_ms)} / ${fmtMs(s.t.ttfb_ms)} / ${fmtMs(s.t.total_ms)}`]];
-  if (req && req.model) kv.push(["model", req.model], ["messages", (req.messages || []).length], ["system blocks", (req.system || []).length], ["tools", (req.tools || []).length], ["max_tokens", req.max_tokens ?? "–"]);
-  body.append(el("div", { class: "sec" }, el("h3", null, "Request"), el("div", { class: "box kv" }, kv.map(([k, v]) => [el("div", null, k), el("div", null, String(v))]))));
-  body.append(el("div", { class: "sec", id: "replysec" }));
+const convShown = new Map();   // exchange id -> index of first visible message
+async function renderConversation(s, full, body, token) {
+  const req = full.request;
+  body.append(el("div", { class: "muted" }, "Loading messages…"));
+  let msgs;
+  try { msgs = await blobs(req.messages); } catch (e) { body.replaceChildren(el("div", { class: "errbox" }, "Could not load messages: " + e)); return; }
+  if (token !== detailToken) return;
+  const names = new Map(), results = new Map(), callAt = new Map();
+  msgs.forEach((m, i) => contentOf(m).forEach(b => {
+    if (b.type && b.type.endsWith("tool_use")) { names.set(b.id, b.name); callAt.set(b.id, i); }
+    if (b.type === "tool_result") results.set(b.tool_use_id, { block: b, index: i });
+  }));
+  const reply = full.reply || S.live.get(s.id);
+  for (const b of (reply && reply.content) || []) if (b.type && b.type.endsWith("tool_use")) names.set(b.id, b.name);
+  const n = msgs.length;
+  const dflt = Math.max(0, Math.min(req.new_from > 0 ? req.new_from - 1 : n - 4, n - 1));
+  const start = Math.max(0, Math.min(convShown.has(s.id) ? convShown.get(s.id) : dflt, n));
+  const ctx = { names, results, links: full.links || {}, exId: s.id };
+  const parts = [];
+  if (start > 0) {
+    parts.push(el("div", { class: "earlier" },
+      el("button", { onclick: () => { convShown.set(s.id, Math.max(0, start - 10)); renderDetail(); } }, `${start} earlier message${start === 1 ? "" : "s"} ▸`),
+      start > 10 ? el("button", { onclick: () => { convShown.set(s.id, 0); renderDetail(); } }, "show all") : null));
+  }
+  for (let i = start; i < n; i++) parts.push(renderMessage(msgs[i], i, ctx, start, callAt));
+  parts.push(el("div", { class: "replyhead" }, el("span", null, "Reply to this request"), reply && reply.stop_reason ? el("span", { class: "chip" }, "stop: " + reply.stop_reason) : null));
+  parts.push(el("div", { id: "replysec" }));
+  body.replaceChildren(...parts);
   fillReply(s, full);
 }
+
+function renderMessage(m, i, ctx, start, callAt) {
+  const role = m.role || "?";
+  const blocks = contentOf(m);
+  const parts = [];
+  blocks.forEach((b, j) => {
+    // A result whose call is shown above is drawn under that call; here it is a one-line pointer.
+    if (b.type === "tool_result" && callAt.has(b.tool_use_id) && callAt.get(b.tool_use_id) >= start) {
+      parts.push(el("div", { class: `ptr ${b.is_error ? "k-err" : "k-result"}` }, `${b.is_error ? "✗" : "◧"} Result · ${ctx.names.get(b.tool_use_id) || "?"} — shown under its call ↑`));
+      return;
+    }
+    parts.push(renderBlock(b, Object.assign({ role }, ctx), `${ctx.exId}:${i}:${j}`));
+  });
+  const anchor = `m${ctx.exId}-${i}`;
+  return el("div", { class: "msg", id: anchor, "data-i": i },
+    el("div", { class: "mh" }, el("span", { class: "role r-" + role }, role), el("span", { class: "mono muted" }, "#" + i),
+      el("span", { class: "sp" }), copyBtn(() => blocks.map(b => b.text || textOfResult(b) || (b.input ? JSON.stringify(b.input) : "")).filter(Boolean).join("\n\n")),
+      rawToggle(m, () => el("div", null, parts))),
+    el("div", { class: "mb" }, parts));
+}
+function rawToggle(value, normal) {
+  return el("button", { class: "copy", title: "raw JSON", onclick: e => {
+    e.stopPropagation(); const btn = e.currentTarget, mb = btn.closest(".msg").querySelector(".mb");
+    const on = !btn.classList.contains("on"); btn.classList.toggle("on", on);
+    mb.replaceChildren(on ? jsonView(value) : normal());
+  } }, "raw");
+}
+
 let liveQueued = false;
-function scheduleLiveReply() { if (!liveQueued) { liveQueued = true; requestAnimationFrame(() => { liveQueued = false; const s = S.ex.get(S.selected); if (s && S.tab === "overview") fillReply(s, S.full.get(s.id)); }); } }
+function scheduleLiveReply() {
+  if (liveQueued) return; liveQueued = true;
+  requestAnimationFrame(() => { liveQueued = false; const s = S.ex.get(S.selected); if (s && (S.tab === "conversation" || S.tab === "reply")) fillReply(s, S.full.get(s.id)); });
+}
 function fillReply(s, full) {
   const sec = $("#replysec"); if (!sec) return;
-  const reply = (full && full.reply) || S.live.get(s.id);
-  const parts = [el("h3", null, "Reply", reply && reply.stop_reason ? el("span", { class: "chip" }, "stop: " + reply.stop_reason) : null)];
-  if (!reply) parts.push(el("div", { class: "muted" }, s.kind === "messages" ? (s.state === "done" ? "No reply." : "Waiting for the reply…") : "Not a Messages API call. See Raw."));
+  const reply = (full && full.reply && s.state !== "streaming") ? full.reply : (S.live.get(s.id) || (full && full.reply));
+  const parts = [];
+  if (!reply) parts.push(el("div", { class: "muted" }, s.state === "done" || s.state === "error" || s.state === "aborted" ? "No reply." : "Waiting for the reply…"));
   else if (reply.count) parts.push(el("div", { class: "box" }, `input_tokens: ${reply.count.input_tokens}`));
   else {
-    for (const b of reply.content || []) parts.push(basicBlock(b));
-    if (reply.usage) parts.push(el("div", { class: "muted mono" }, Object.entries(reply.usage).filter(([, v]) => typeof v === "number").map(([k, v]) => `${k}: ${v}`).join(" · ")));
+    const names = new Map();
+    (reply.content || []).forEach(b => { if (b && b.id) names.set(b.id, b.name); });
+    const ctx = { role: "assistant", names, results: new Map(), links: (full && full.links) || {}, exId: s.id };
+    (reply.content || []).forEach((b, i) => { if (b) parts.push(renderBlock(b, ctx, `${s.id}:reply:${i}`)); });
+    if (reply.error) parts.push(el("div", { class: "errbox" }, el("b", null, "✗ Stream error  "), JSON.stringify(reply.error)));
+    if (reply.usage) parts.push(usageLine(reply.usage));
   }
   sec.replaceChildren(...parts);
 }
-function basicBlock(b) {
-  if (b.type === "text") return el("div", { class: "blk k-model" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "◆ Model")), el("div", { class: "bb" }, el("pre", null, b.text || "")));
-  if (b.type === "thinking" || b.type === "redacted_thinking") return el("div", { class: "blk k-think" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "💭 Thinking")), el("div", { class: "bb" }, el("pre", null, b.thinking || "(redacted)")));
-  if (b.type === "tool_use" || b.type === "server_tool_use") {
-    const input = "_partial" in b ? b._partial : b.input_raw != null ? b.input_raw : JSON.stringify(b.input, null, 2);
-    return el("div", { class: "blk k-call" }, el("div", { class: "bh" }, el("span", { class: "lbl" }, "⟳ Tool call · " + (b.name || "?")), "_partial" in b ? el("span", null, "receiving…") : null),
-      el("div", { class: "bb" }, el("pre", { class: "code" }, input)));
-  }
-  return el("div", { class: "blk" }, el("div", { class: "bh" }, b.type || "block"), el("div", { class: "bb" }, el("pre", { class: "code" }, JSON.stringify(b, null, 2))));
+function usageLine(u) {
+  return el("div", { class: "usage mono" },
+    el("span", null, "in ", el("b", null, fmtN(u.input_tokens || 0)), " uncached"),
+    el("span", null, el("b", null, fmtN(u.cache_creation_input_tokens || 0)), " cache write"),
+    el("span", null, el("b", null, fmtN(u.cache_read_input_tokens || 0)), " cache read"),
+    el("span", null, "out ", el("b", null, fmtN(u.output_tokens || 0))));
+}
+
+async function renderReplyTab(s, full, body) {
+  const reply = full.reply || S.live.get(s.id);
+  body.append(el("div", { class: "sec" }, el("h3", null, "Reply", reply && reply.stop_reason ? el("span", { class: "chip" }, "stop: " + reply.stop_reason) : null, reply && reply.id ? el("span", { class: "mono muted" }, reply.id) : null), el("div", { id: "replysec" })));
+  fillReply(s, full);
+}
+
+async function renderSystem(s, full, body, token) {
+  const sys = await blobs(full.request.system);
+  if (token !== detailToken) return;
+  if (!sys.length) { body.append(el("div", { class: "muted" }, "No system prompt.")); return; }
+  const total = sys.reduce((a, b) => a + (b.text || "").length, 0);
+  body.append(el("div", { class: "muted sec" }, `${sys.length} block${sys.length === 1 ? "" : "s"} · ${sizeInfo(sys.map(b => b.text || "").join("\n"))}`));
+  sys.forEach((b, i) => {
+    const text = b.text || JSON.stringify(b);
+    body.append(blockShell("sys", `📜 System · block ${i + 1}`, {
+      raw: b, size: sizeInfo(text), copy: () => text,
+      extra: b.cache_control ? el("span", { class: "chip" }, "cache_control: " + (b.cache_control.type || "") + (b.cache_control.ttl ? " " + b.cache_control.ttl : "")) : null,
+    }, () => collapsible(text, `sys:${full.request.system[i]}`, prePlain)));
+  });
+}
+
+async function renderTools(s, full, body, token) {
+  const tools = await blobs(full.request.tools);
+  if (token !== detailToken) return;
+  if (!tools.length) { body.append(el("div", { class: "muted" }, "No tools in this request.")); return; }
+  const q = el("input", { class: "search", type: "search", placeholder: `Search ${tools.length} tools…`, value: S.toolQuery || "" });
+  const list = el("div", { class: "tools" });
+  const draw = () => {
+    const needle = (q.value || "").toLowerCase();
+    S.toolQuery = q.value;
+    list.replaceChildren(...tools.map((t, i) => [t, i]).filter(([t]) => !needle || (t.name || "").toLowerCase().includes(needle) || (t.description || "").toLowerCase().includes(needle)).map(([t, i]) => {
+      const props = Object.keys((t.input_schema && t.input_schema.properties) || {});
+      const req = new Set((t.input_schema && t.input_schema.required) || []);
+      const desc = t.description || "";
+      return el("details", { class: "tool", open: expanded.get("tool:" + t.name) || null, ontoggle: e => expanded.set("tool:" + t.name, e.currentTarget.open) },
+        el("summary", null, el("span", { class: "tname mono" }, t.name || t.type || "?"),
+          el("span", { class: "tdesc" }, desc.split("\n")[0]),
+          el("span", { class: "tparams" }, props.map(p => el("span", { class: "chip" + (req.has(p) ? " req" : ""), title: req.has(p) ? "required" : "optional" }, p)))),
+        el("div", { class: "tbody" },
+          el("div", { class: "sec" }, el("h3", null, "Description", el("span", { class: "sz" }, sizeInfo(desc)), copyBtn(() => desc)), collapsible(desc, "tooldesc:" + t.name, prePlain)),
+          el("div", { class: "sec" }, el("h3", null, "input_schema"), jsonView(t.input_schema || t))));
+    }));
+  };
+  q.addEventListener("input", draw);
+  draw();
+  body.append(q, list);
+}
+
+function renderParams(s, full, body) {
+  const r = full.request;
+  const betas = (r.headers || []).filter(([k]) => k.toLowerCase() === "anthropic-beta").map(([, v]) => v).join(",");
+  const rows = [];
+  const add = (k, v) => rows.push(el("div", null, k), el("div", null, v));
+  add("endpoint", `${full.method} ${full.path}`);
+  add("kind", full.kind);
+  if (r.model) add("model", r.model);
+  if (r.max_tokens != null) add("max_tokens", String(r.max_tokens));
+  if (r.stream != null) add("stream", String(r.stream));
+  if (betas) add("anthropic-beta", el("div", null, betas.split(",").map(b => el("span", { class: "chip" }, b.trim()))));
+  const ua = (r.headers || []).find(([k]) => k.toLowerCase() === "user-agent");
+  if (ua) add("user-agent", ua[1]);
+  add("timing", `connect ${fmtMs(full.t.connected_ms)} · first byte ${fmtMs(full.t.ttfb_ms)} · total ${fmtMs(full.t.total_ms)}`);
+  add("started", absTime(full.t.start));
+  add("sizes", `request ${fmtN(r.size)} B · response ${fmtN(full.response.size)} B`);
+  if (r.parse_error) add("parse", el("span", { class: "chip err" }, r.parse_error));
+  body.append(el("div", { class: "sec" }, el("h3", null, "Request"), el("div", { class: "box kv" }, rows)));
+  for (const k of ["thinking", "metadata"]) if (r[k] !== undefined) body.append(el("div", { class: "sec" }, el("h3", null, k), jsonView(r[k])));
+  if (r.params && Object.keys(r.params).length) body.append(el("div", { class: "sec" }, el("h3", null, "Other parameters"), jsonView(r.params)));
+  if (r.json !== undefined) body.append(el("div", { class: "sec" }, el("h3", null, "Body (not a Messages API call)"), jsonView(r.json)));
 }
 
 async function renderRaw(s, full, body, token) {
@@ -506,7 +991,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "k") move(-1);
   else if (e.key === "f") setFollow(!S.follow);
   else if (e.key === "p") setPaused(!S.paused);
-  else if (e.key === "r") { S.tab = S.tab === "raw" ? "overview" : "raw"; renderDetail(); }
+  else if (e.key === "r") { S.tab = S.tab === "raw" ? "conversation" : "raw"; renderDetail(); }
   else return;
   e.preventDefault();
 });
@@ -514,6 +999,7 @@ setInterval(scheduleTimeline, 10000); // keep "12s ago" fresh
 
 (async function init() {
   try { S.config = await getJSON("/api/config"); } catch (e) {}
+  compileRules();
   if (S.config.mode === "load") document.title = "Proxy Traffic (replay)";
   try { await loadAll(); } catch (e) { setConn("offline"); }
   connect();

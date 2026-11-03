@@ -76,8 +76,7 @@ class LiveUI(unittest.TestCase):
         top_id = b.js("document.elementFromPoint(100, document.querySelector('#tl').getBoundingClientRect().top + 60).closest('.row').dataset.id")
         self.send("text_stream.sse", **{"x-chunks": "1"})
         self.send("text_stream.sse", **{"x-chunks": "1"})
-        b.wait("document.querySelector('#pill').style.display === 'block'")
-        self.assertIn("2 new", b.js("document.querySelector('#pill').textContent"))
+        b.wait("document.querySelector('#pill').style.display === 'block' && document.querySelector('#pill').textContent.includes('2 new')")
         same = b.js("document.elementFromPoint(100, document.querySelector('#tl').getBoundingClientRect().top + 60).closest('.row').dataset.id")
         self.assertEqual(same, top_id)
         b.click("#pill")
@@ -156,3 +155,119 @@ class ManyRows(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(CHROME, "needs Chrome/Chromium")
+class DemoUI(unittest.TestCase):
+    """Phase 3: message kinds, harness detection, pairing, safe rendering. Uses the demo session."""
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.demo import play
+        cls.up = FakeUpstream().__enter__()
+        cls.proxy = Proxy(cls.up.url, extra=["--no-print"], dash=True).__enter__()
+        cls.n = play(cls.proxy.port, 0)
+        # a real prompt that merely mentions a tag must still count as the human's
+        body = json.loads(fixture("request_messages.json"))
+        body["messages"] = [{"role": "user", "content": "why does <system-reminder> appear in my logs?"}]
+        call(cls.proxy.port, json.dumps(body).encode(), {"x-fixture": "text_stream.sse"})
+        cls.b = Browser(1400, 1000).__enter__()
+        cls.b.goto(f"http://localhost:{cls.proxy.dash_port}/")
+        cls.b.js("window.__alerts = 0; window.alert = () => { window.__alerts++; }; null")
+        cls.b.wait(f"S.order.length === {cls.n + 1}")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.b.__exit__(None, None, None)
+        cls.proxy.__exit__(None, None, None)
+        cls.up.__exit__(None, None, None)
+
+    def open(self, ex_id, tab="conversation"):
+        b = self.b
+        b.js(f"S.tab = '{tab}'; select({ex_id}, true); null")
+        b.wait(f"document.querySelector('#detail').dataset.ex === '{ex_id}' && !document.querySelector('#tabbody > .muted')")
+        if tab == "conversation":
+            b.wait("document.querySelector('#replysec')")
+
+    def texts(self, sel):
+        return self.b.js(f"[...document.querySelectorAll({json.dumps(sel)})].map(e => e.textContent)")
+
+    def test_harness_vs_you(self):
+        self.open(3)
+        self.b.js("document.querySelector('.earlier button')?.click(); null")
+        self.b.wait("document.querySelector('.k-harness')")
+        harness = self.b.js("document.querySelector('.k-harness .lbl').title")
+        self.assertIn("system-reminder", harness)
+        self.assertTrue(any("fix the failing test" in t for t in self.texts(".k-you")))
+        self.open(self.n + 1)
+        self.assertEqual(self.b.js("document.querySelectorAll('.k-harness').length"), 0)
+        self.assertTrue(any("why does <system-reminder>" in t for t in self.texts(".k-you")))
+
+    def test_tool_call_paired_with_result(self):            # acceptance 3
+        b = self.b
+        self.open(8)
+        calls = b.js("document.querySelectorAll('#tabbody .msg .k-call').length")
+        self.assertGreater(calls, 0)
+        self.assertEqual(b.js("document.querySelectorAll('#tabbody .msg .k-call + .pair .k-result, #tabbody .msg .k-call .pair .k-result').length"), calls)
+        self.assertGreater(b.js("document.querySelectorAll('.ptr').length"), 0)   # result row points up to its call
+        link = b.js("[...document.querySelectorAll('a.chip.link')].map(a => a.textContent)")
+        self.assertIn("arrived in #7", link)
+        b.js("[...document.querySelectorAll('a.chip.link')].find(a => a.textContent === 'arrived in #7').click(); null")
+        b.wait("S.selected === 7")
+        # a call in the reply, whose result came in the next request
+        self.open(3)
+        b.wait("document.querySelector('#replysec .k-call .k-result')")
+        self.assertIn("arrived in #4", self.texts("#replysec a.chip.link"))
+        # the last call has no result yet
+        self.open(self.n)
+        b.wait("document.querySelector('#replysec .awaiting')")
+
+    def test_error_result_marked(self):
+        self.open(12)
+        self.b.wait("document.querySelector('.k-err')")
+        self.assertIn("error", self.b.js("document.querySelector('.k-err .lbl').textContent"))
+
+    def test_hostile_content_is_inert(self):                # C5
+        b = self.b
+        self.open(14)
+        b.wait("document.querySelector('#replysec .k-model')")
+        self.assertEqual(b.js("document.querySelectorAll('#detail img, #detail script, #detail iframe').length"), 0)
+        self.assertEqual(b.js("[...document.querySelectorAll('#detail a')].filter(a => a.getAttribute('href') !== '#' && !/^https?:/.test(a.href)).length"), 0)
+        self.assertIn("<script>alert(1)</script>", b.js("document.querySelector('#replysec').textContent"))
+        self.assertEqual(b.js("window.__alerts"), 0)
+
+    def test_markdown_and_size(self):
+        b = self.b
+        self.open(8)
+        b.wait("document.querySelector('#replysec .md')")
+        self.assertEqual(b.js("document.querySelector('#replysec .md strong').textContent"), "Cause:")
+        self.assertIn("return a + b", b.js("document.querySelector('#replysec .md pre.code').textContent"))
+        self.assertEqual(b.js("document.querySelectorAll('#replysec .md li').length"), 2)
+        self.assertIn("chars", b.js("document.querySelector('#replysec .sz').textContent"))
+        # long tool output collapses with a "show all" button
+        self.open(4)
+        b.js("document.querySelector('.earlier button')?.click(); null")
+        b.wait("[...document.querySelectorAll('button.more')].some(x => /show all \\(\\d+ lines\\)/.test(x.textContent))")
+
+    def test_system_and_tools_tabs(self):                   # acceptance 4 (read in full)
+        b = self.b
+        self.open(3, "system")
+        b.wait("document.querySelectorAll('.k-sys').length === 3")
+        b.js("[...document.querySelectorAll('.k-sys button.more')].forEach(x => x.click()); null")
+        self.assertIn("Rule 60", b.js("document.querySelector('#tabbody').textContent"))
+        self.open(3, "tools")
+        b.wait("document.querySelectorAll('details.tool').length === 7")
+        b.js("(q => { q.value = 'ripgrep'; q.dispatchEvent(new Event('input')); })(document.querySelector('input.search')); null")
+        b.wait("document.querySelectorAll('details.tool').length === 1")
+        b.js("(q => { q.value = ''; q.dispatchEvent(new Event('input')); })(document.querySelector('input.search')); null")
+
+    def test_other_kinds(self):
+        b = self.b
+        self.open(2, "params")
+        self.assertIn("count_tokens", b.js("document.querySelector('#tabbody').textContent"))
+        self.open(5)
+        b.wait("document.querySelector('.errbox')")
+        self.assertIn("overloaded_error", b.js("document.querySelector('.errbox').textContent"))
+
+    def test_zz_no_console_errors(self):
+        self.assertEqual([c for c in self.b.console if "EXCEPTION" in c], [])

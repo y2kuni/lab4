@@ -48,6 +48,8 @@ class Store:
         self.events: collections.deque = collections.deque(maxlen=EVENT_BUFFER)
         self.subscribers: list[queue.Queue] = []
         self.listeners: list = []                    # callables(ex) run when an exchange starts (threads, §4.3)
+        self.result_at: dict[str, dict] = {}         # tool_use_id -> {"ex", "msg"}: where its result first arrived
+        self.call_at: dict[str, int] = {}            # tool_use_id -> exchange whose reply made the call
         self.log_path = log_path
         self.log_file = None
         self.logged: set[str] = set()
@@ -141,7 +143,13 @@ class Store:
                 system = [{"type": "text", "text": system}]
             req["system"] = [self._put("system", s) for s in (system or [])]
             req["tools"] = [self._put("tool", t) for t in (b.get("tools") or [])]
-            req["messages"] = [self._put("message", m) for m in b["messages"]]
+            req["messages"] = []
+            for m in b["messages"]:
+                is_new = blob_hash(m) not in self.blobs
+                h = self._put("message", m)
+                req["messages"].append(h)
+                if is_new:
+                    self._index_results(ex_id, h, m)
             req["new_from"] = 0
         elif isinstance(body_json, (dict, list)):
             req["json"] = body_json      # §4.4: other traffic is shown as-is
@@ -157,6 +165,34 @@ class Store:
         for fn in self.listeners:
             fn(self, ex)
         self.emit("exchange.start", self.summary(ex))
+
+    def _index_results(self, ex_id, h, msg):
+        if isinstance(msg, dict) and isinstance(msg.get("content"), list):
+            for block in msg["content"]:
+                if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id"):
+                    self.result_at.setdefault(block["tool_use_id"], {"ex": ex_id, "msg": h})
+
+    def _index_calls(self, ex):
+        for block in (ex.get("reply") or {}).get("content") or []:
+            if isinstance(block, dict) and block.get("id") and block.get("type", "").endswith("tool_use"):
+                self.call_at.setdefault(block["id"], ex["id"])
+
+    def links(self, ex) -> dict:
+        """tool_use_id -> where the call was made and where its result arrived (SPEC §5.4.2)."""
+        ids = []
+        for h in ex["request"].get("messages", []):
+            m = (self.blobs.get(h) or {}).get("data")
+            if isinstance(m, dict) and m.get("role") == "assistant" and isinstance(m.get("content"), list):
+                ids += [b.get("id") for b in m["content"] if isinstance(b, dict) and b.get("type", "").endswith("tool_use")]
+        ids += [b.get("id") for b in (ex.get("reply") or {}).get("content") or []
+                if isinstance(b, dict) and b.get("type", "").endswith("tool_use")]
+        out = {}
+        for i in ids:
+            if i:
+                out[i] = {"call_ex": self.call_at.get(i), **({"result_ex": self.result_at[i]["ex"],
+                                                              "result_msg": self.result_at[i]["msg"]}
+                                                             if i in self.result_at else {})}
+        return out
 
     def on_connected(self, ex_id, ms):
         ex = self.exchanges.get(ex_id)
@@ -236,6 +272,7 @@ class Store:
             ex["error"] = {"type": state, "message": error}
         if state == "aborted":
             ex["badges"].append("aborted")
+        self._index_calls(ex)
         self._log(ex, raw)
         self.emit("exchange.error" if ex["error"] else "exchange.end", self.summary(ex))
 
@@ -275,6 +312,10 @@ class Store:
                         self.raw_resp[ex["id"]] = bytearray(raw)
                         for h in self._ex_hashes(ex):
                             self.refs[h] += 1
+                        for h in ex["request"].get("messages", []):
+                            if h in self.blobs:
+                                self._index_results(ex["id"], h, self.blobs[h]["data"])
+                        self._index_calls(ex)
                         while len(self.exchanges) > self.max:
                             _, old = self.exchanges.popitem(last=False)
                             self._release(self._ex_hashes(old))
@@ -305,7 +346,11 @@ class Store:
     def get(self, ex_id: int) -> dict | None:
         with self.lock:
             ex = self.exchanges.get(ex_id)
-            return json.loads(json.dumps(ex)) if ex else None
+            if not ex:
+                return None
+            out = json.loads(json.dumps(ex))
+            out["links"] = self.links(ex)
+            return out
 
     def get_raw(self, ex_id: int) -> dict | None:
         with self.lock:

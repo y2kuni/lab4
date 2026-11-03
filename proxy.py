@@ -169,11 +169,14 @@ def main() -> None:
     parser.add_argument("--max-exchanges", type=int, default=2000, help="exchanges kept in memory (default 2000)")
     parser.add_argument("--dash-port", type=int, default=8042, help="dashboard port (default 8042)")
     parser.add_argument("--no-dash", action="store_true", help="don't start the dashboard")
+    parser.add_argument("--harness-patterns", metavar="PATH",
+                        help="JSON rules for spotting harness-injected text (default: ./harness_patterns.json if present)")
     args = parser.parse_args()
     UPSTREAM = args.upstream.rstrip("/")
     PRINT = not args.no_print
 
     import dashboard
+    ui = dashboard.ui_config(args.harness_patterns)
     from recorder import Recorder
     from store import Store
 
@@ -183,7 +186,7 @@ def main() -> None:
         print(f"loaded {n} exchanges, {len(store.blobs)} unique blocks from {args.load} (nothing is forwarded)", flush=True)
         if args.no_dash:
             return
-        dash = dashboard.make_server(store, args.dash_port, {"mode": "load", "source": args.load})
+        dash = dashboard.make_server(store, args.dash_port, dict(ui, mode="load", source=args.load))
         print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
         try:
             dash.serve_forever()
@@ -198,7 +201,7 @@ def main() -> None:
     REC = Recorder(store)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Tap)
     if not args.no_dash:
-        dashboard.start(store, args.dash_port, {"mode": "live", "upstream": UPSTREAM})
+        dashboard.start(store, args.dash_port, dict(ui, mode="live", upstream=UPSTREAM))
         print(f"dashboard on http://localhost:{args.dash_port}", flush=True)
     print(f"proxy listening on http://localhost:{args.port}  ->  {UPSTREAM}")
     print(f"run the agent with:  ANTHROPIC_BASE_URL=http://localhost:{args.port} claude", flush=True)

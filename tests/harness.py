@@ -183,13 +183,15 @@ class Proxy:
         for p in ports:
             while True:
                 if self.proc.poll() is not None:
-                    raise RuntimeError(f"proxy exited early:\n{self.output()}")
+                    self.__exit__(None, None, None)
+                    raise RuntimeError(f"proxy exited early:\n{self.last_output}")
                 try:
                     socket.create_connection(("127.0.0.1", p), timeout=0.2).close()
                     break
                 except OSError:
                     if time.time() > deadline:
-                        raise RuntimeError(f"proxy did not start:\n{self.output()}")
+                        self.__exit__(None, None, None)
+                        raise RuntimeError(f"proxy did not start:\n{self.last_output}")
                     time.sleep(0.05)
         return self
 
@@ -198,6 +200,10 @@ class Proxy:
         return Path(self.out_path).read_bytes().decode("utf-8", "replace")
 
     def __exit__(self, *exc):
+        if getattr(self, "closed", False):
+            return
+        self.last_output = self.output()
+        self.closed = True
         self.proc.terminate()
         try:
             self.proc.wait(5)
